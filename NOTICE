@@ -1,0 +1,16 @@
+cs2-c4-damage
+Copyright 2026 cs2-c4-damage contributors
+
+New project code is licensed under Apache License 2.0.
+
+Native current-CS2 C4 research credit: unicbm (https://github.com/unicbm).
+The original docs/research/c4-damage-hud-native-2026-09-17.zh-CN.md is
+copyright unicbm, reproduced and used with permission recorded in
+docs/research/authorization.md. It is NOT licensed under this project's
+Apache-2.0 license. Original research text is excluded from npm packaging.
+
+Source 2 Viewer / ValveResourceFormat is acknowledged as public resource-format
+prior art: https://s2v.app and https://github.com/ValveResourceFormat/ValveResourceFormat
+No upstream implementation code or Valve game assets are included.
+
+No endorsement by Valve, Counter-Strike or Steam is claimed.

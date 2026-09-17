@@ -1,0 +1,3 @@
+* text=auto eol=lf
+# Preserve the supplied research bytes, including line endings.
+docs/research/c4-damage-hud-native-2026-09-17.zh-CN.md -text

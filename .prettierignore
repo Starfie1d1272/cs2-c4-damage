@@ -1,0 +1,7 @@
+node_modules/
+dist/
+pnpm-lock.yaml
+LICENSE
+NOTICE
+qualification/
+docs/research/c4-damage-hud-native-2026-09-17.zh-CN.md

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+.agent-tmp/
+qualification/
+*.tgz
+*.vpk
+*.dll
+*.vdata
+*.vdata_c
+.DS_Store
