@@ -51,6 +51,7 @@ describe('synthetic uncertainty contract', () => {
       'ducked',
       'native-sample-point',
       'ground-collision-correction',
+      'native-second-sample-selection',
     ]);
     expect(assessGsiSnapshot({}).unknownInputs).toContain('health');
   });

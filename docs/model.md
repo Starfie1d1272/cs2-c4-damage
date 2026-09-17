@@ -1,8 +1,9 @@
-# Model evidence and qualification roadmap
+# Model evidence and qualification status
 
-This is a research status document, not a list of implemented gameplay features.
+This is an evidence and qualification boundary, not a claim of native parity.
 Primary evidence: [unicbm's original report](research/c4-damage-hud-native-2026-09-17.zh-CN.md).
 Public sources and their limitations: [provenance](research/PROVENANCE.md).
+The current static query closure is recorded in [native-query-closure](research/native-query-closure.md).
 
 ## Strong static evidence in the supplied build
 
@@ -26,29 +27,45 @@ show why older radius/armor formulae and unversioned data cannot silently serve 
 The original report also cites a July 20 HUD-timing change; this repository has not
 independently verified that particular update and does not depend on it.
 
-## Implemented semantics
+## Implemented external model
 
-Only arithmetic over a supplied conservative damage range: HP is clamped at zero;
-lethal is true for an entirely lethal range, false for an entirely surviving range,
-and indeterminate when crossing HP. Invalid ranges/HP are unavailable. No current
-function emits exact. GSI assessment preserves known gaps. Prediction always fails closed.
+The parser validates Source 2 Viewer text, packed little-endian field data,
+finite/bounded values, exact record cardinality and provenance. The field-only model
+implements 32-unit AABB expansion, bombsite-major indexing, deterministic 3D nearest
+lookup, the documented Phase/power conversion, yaw/pitch `/256` direction decoding,
+integer truncation and the crouch/facing Bias arithmetic.
+Packed representation validation does not invent a narrower gameplay-domain limit for
+Phase, coordinates or bomb power; those limits remain subject to evidence.
 
-## Unlocked semantics requiring qualification
+`lookupBakedField` requires an explicit sample point and reports its internal
+nearest/overlap policy. `evaluateBakedFieldCorrection` can enumerate known
+standing/crouched arithmetic, but retains `ground-collision-correction` and
+`native-second-sample-selection` as unknown. These helpers are not native parity and
+do not emit a conservative native damage envelope.
 
-| Question                           | Evidence to collect before implementation/qualification                                         |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------- |
-| Native spatial sample point        | Trace entity coordinate sources, offsets and movement modes in matched builds.                  |
-| Ground-height/collision correction | Derive exact trace geometry, collision inputs, thresholds and order.                            |
-| Second-sample condition            | Establish branch conditions, positions, failure handling and result selection.                  |
-| Exact field lookup                 | Confirm nearest-node distance metric, ties, precision, site overlap and AABB edge behavior.     |
-| Phase/direction conversion         | Qualify scalar conversion, saturation, angle conventions and truncation against native outputs. |
-| Arbitrary-position behavior        | Test outside sampled regions, out of map, between floors and ambiguous sites.                   |
-| GSI vs pawn coordinates            | Compare synchronized telemetry with native sample points, ducking and observer modes.           |
-| Build changes                      | Requalify resource, model and platform after Valve updates; reject unknown combinations.        |
+`outcomeFromDamageRange` remains the only model-independent route to a `bounded`
+outcome. `predictC4Outcome` and the GSI prediction adapter return `unavailable` for
+valid external inputs until a matched-build native qualification establishes the
+missing semantics. No current function emits `exact`.
 
-Also test the 99/100 transition, Bias rounding boundaries, forward-vector precision,
-standard-rule assumptions, shockwave arrival timing, stale snapshots and demo seeks.
-A native query value is a current-state conditional prediction, not a future lethal guarantee.
+## Current qualification gates
+
+| Question                           | Current static conclusion                                                                                                                   | External status                    |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Native spatial sample point        | A target virtual call writes the first field-query `Vec3`; exact origin/center/eye/offset semantics are not proven.                         | fail closed                        |
+| Ground-height/collision correction | The query depends on target collision state and map collision geometry not present in field+GSI.                                            | fail closed                        |
+| Second-sample condition            | A gated second lookup reuses x/y and adjusts z from native transform/correction state; exact predicate and failure priority are incomplete. | fail closed                        |
+| Exact field lookup                 | Resource indexing and 32-unit expansion are supported; KD-tree metric, ties and overlap traversal are not proven.                           | deterministic internal policy only |
+| Phase/direction conversion         | Static formula and byte-angle conversion are implemented and unit-tested; live native output comparison is absent.                          | qualification-ready                |
+| Arbitrary-position behavior        | Outside/no-node/missing-record paths are unavailable; no legacy/radius fallback is used.                                                    | fail closed                        |
+| GSI vs pawn coordinates            | GSI position/forward/HP do not establish the native target sample or collision truth; crouch stays unknown.                                 | unavailable                        |
+| Build changes                      | Resource/DLL/build/model identity is bound by metadata and vector checks.                                                                   | reject mismatch                    |
+
+The deterministic suite covers the 99/100 transition, Bias rounding boundaries,
+forward-vector precision, parser edges, site/nearest policies and fail-closed GSI
+inputs. A native query value is a current-state conditional prediction, not a future
+lethal guarantee; live work must additionally compare synchronized native vectors and
+actual applied damage under standard rules.
 
 ## Missing external inputs and uncertainty policy
 
@@ -67,16 +84,26 @@ these fields; they are current limitations. Map/resource identity must be suppli
 - Absence of baked data is unavailable. Native legacy fallback exists per the report,
   but this library does not implement or silently substitute it.
 
-## Private qualification workflow (planned)
+## Private qualification workflow
 
 Use user-owned resources under gitignored `qualification/`; never commit or npm-publish
-VPKs, DLLs or complete vdata resources. Record exact build, map/resource SHA-256,
-extractor revision, platform, model revision, standard game rules and synchronized
-inputs with expected native query and actual applied outcomes. Obtain observations
-through a separately authorized research setup; this package provides no injection,
-hooks or native-RVA execution. Define numeric and coverage acceptance criteria before
-claiming parity. Publish only permissible aggregate evidence and synthetic regressions.
+VPKs, DLLs or complete vdata resources. The `qualify <vectors.json> <field>` command
+requires exact map/build/client/resource/model identity and reports pass/fail totals,
+mismatches and unresolved cases without tolerance. Vector cases use decoded Vec3
+objects or JSON triples and must record whether the native query itself was valid;
+this repository does not fabricate native vectors. Evidence must bind compiled and
+decompiled resource hashes, the canonical `normalizedFieldSha256`, and the explicit
+`sourcePairStatus`; the current status is always `unverified-source-pair` because the
+extractor does not self-decompile compiled resources. Optional `nativeFailureReason`
+and trace fields preserve Windows evidence, but the current harness compares final
+native validity and damage only. A `passed` result requires non-empty evidence with at
+least one native-valid case, an exact damage match for every native-valid case, and no unresolved positive
+case; negative validity cases are reported separately. Trace capture is still required
+to close Q1–Q3.
 
-No qualification harness or real-asset workflow is implemented in this initialization.
-The three highest-value next questions are the native sample point, correction/second
-sample control flow, and exact lookup/conversion with build-bound dynamic comparisons.
+Record exact build, map/resource SHA-256, extractor revision, platform, model revision,
+standard game rules and synchronized inputs with expected native query and actual
+applied outcomes. Obtain observations through a separately authorized research setup;
+this package provides no injection, hooks or native-RVA execution. Define numeric and
+coverage acceptance criteria before claiming parity. Publish only permissible aggregate
+evidence and synthetic regressions.

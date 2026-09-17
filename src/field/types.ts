@@ -5,12 +5,22 @@ export interface Vec3 {
   readonly z: number;
 }
 
+/** The current extractor does not prove that a decompiled text file came from the compiled resource. */
+export type SourcePairStatus = 'unverified-source-pair';
+
 /** Library SemVer is intentionally absent: it does not identify gameplay data. */
 export interface FieldMetadata {
   readonly formatVersion: 1;
   readonly modelRevision: string;
   readonly sourceBuildId: string | null;
+  /** Optional native binary identity; absence keeps qualification fail-closed. */
+  readonly sourceClientSha256?: string | null;
   readonly resourceSha256: string | null;
+  /** SHA-256 of the exact decompiled text when the extractor received it. */
+  readonly decompiledVdataSha256: string | null;
+  /** SHA-256 of the canonical normalized field payload, excluding metadata identities. */
+  readonly normalizedFieldSha256: string | null;
+  readonly sourcePairStatus: SourcePairStatus;
   readonly mapName: string;
   readonly sourceResourceVersion: 1 | 2;
   readonly extraction: {
@@ -26,7 +36,7 @@ export interface Bombsite {
   readonly bombPower: number;
 }
 
-/** Raw decoded integers, not HP or degrees. Semantic conversion is not implemented. */
+/** Raw decoded integers, not HP or degrees; semantic conversion is a separate engine step. */
 export interface FieldRecord {
   /** uint16 */
   readonly phase: number;
@@ -36,7 +46,7 @@ export interface FieldRecord {
   readonly pitch: number;
 }
 
-/** Proposed normalized contract, not a validated parser output. */
+/** Normalized field contract; callers must validate untrusted values before use. */
 export interface BombDamageField {
   readonly metadata: FieldMetadata;
   readonly bombsites: readonly Bombsite[];

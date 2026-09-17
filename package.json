@@ -12,6 +12,9 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "cs2-c4-damage": "./dist/node/cli.js"
+  },
   "exports": {
     ".": {
       "import": {
@@ -31,6 +34,16 @@
       "require": {
         "types": "./dist/gsi.d.cts",
         "default": "./dist/gsi.cjs"
+      }
+    },
+    "./node": {
+      "import": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.js"
+      },
+      "require": {
+        "types": "./dist/node/index.d.cts",
+        "default": "./dist/node/index.cjs"
       }
     }
   },

@@ -1,4 +1,6 @@
 import type { C4Outcome, NumericRange, PredictC4Input } from './types.js';
+import { validateBombDamageField } from '../field/validation.js';
+import { normalizeDirection } from './math.js';
 
 /**
  * Arithmetic only: the caller must establish a conservative integer damage envelope.
@@ -40,6 +42,30 @@ export function outcomeFromDamageRange(
 
 /** Deliberate fail-closed foundation: no model/resource pair is qualified yet. */
 export function predictC4Outcome(input: PredictC4Input): C4Outcome {
-  void input;
+  const forward = input?.playerForward;
+  const normalizedForward = forward ? normalizeDirection(forward) : undefined;
+  if (
+    !input ||
+    (input.ducked !== undefined && typeof input.ducked !== 'boolean') ||
+    !Number.isSafeInteger(input.health) ||
+    input.health <= 0 ||
+    ![input.bombPosition, input.playerPosition].every(
+      (value) =>
+        value &&
+        [value.x, value.y, value.z].every(
+          (coordinate) =>
+            typeof coordinate === 'number' && Number.isFinite(coordinate),
+        ),
+    ) ||
+    !forward ||
+    !normalizedForward
+  ) {
+    return { status: 'unavailable', reason: 'invalid-predict-input' };
+  }
+  if (validateBombDamageField(input.field).length > 0) {
+    return { status: 'unavailable', reason: 'invalid-field' };
+  }
+  // The native sample point, collision correction and second-sample branch are not recoverable
+  // from the public input contract. Keeping this entry unavailable prevents a guessed parity path.
   return { status: 'unavailable', reason: 'model-not-qualified' };
 }
