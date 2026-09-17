@@ -83,14 +83,21 @@ predictC4Outcome({
   health,
 });
 
-// Parser provenance is explicit; resourceSha256 may be null only when unknown.
+// Parser provenance is explicit; unknown hashes are represented as null.
 parseBombDamageVdata(vdataText, {
   mapName: 'de_mirage',
   sourceBuildId: '25218825',
   resourceSha256: compiledResourceSha256,
+  decompiledVdataSha256,
   extraction: { tool: 'Source 2 Viewer', revision: '20.0.6980' },
 });
 ```
+
+The parser records `sourcePairStatus: "unverified-source-pair"`: hashing a supplied
+compiled resource and a supplied decompiled text does not prove that one was produced
+from the other. The Node extractor also records the decompiled hash and a canonical
+`normalizedFieldSha256`; qualification binds those identities but keeps the source-pair
+limitation explicit.
 
 `C4Outcome` distinguishes `exact`, `bounded` and `unavailable`. For a proven
 inclusive damage envelope, lethal is true when its minimum reaches HP, false when
@@ -126,6 +133,15 @@ cs2-c4-damage qualify vectors.json field.json
 `predict` reports the fail-closed top-level outcome. An optional explicit
 `--sample-position` prints a clearly labelled field-only calculation; it is not a
 native-parity prediction or a conservative native damage envelope.
+
+Qualification vectors require `schemaVersion: 1`, an explicit `modelRevision`, compiled
+and decompiled resource hashes, `normalizedFieldSha256`, and
+`sourcePairStatus: "unverified-source-pair"`; they may preserve `nativeFailureReason`
+and an evidence-only native trace. The current harness compares final native validity
+and damage only. A pass requires at least one native-valid case, exact damage for every
+positive case, and no unresolved positive case; negative cases are reported separately.
+It does not by itself close Q1–Q3; those require Windows trace instrumentation or
+equivalent native debug capture.
 
 ## Development
 

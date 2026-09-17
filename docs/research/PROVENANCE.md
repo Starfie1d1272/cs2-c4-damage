@@ -80,3 +80,12 @@ real, configured payloads and synchronize them with native sample observations.
 No other public implementation is relied upon by this foundation. Older distance-only
 C4 calculators are not evidence for the current baked-field entity query.
 Any future source reuse requires license compatibility and attribution review.
+
+## Extractor source-pair boundary
+
+The Node extractor hashes the user-supplied compiled resource and decompiled text
+independently, then records both hashes and a canonical normalized-field hash. It marks
+the metadata `sourcePairStatus` as `unverified-source-pair` because it does not invoke a
+decompiler and therefore cannot prove that the text came from the compiled resource.
+Qualification vectors bind these identities but must retain that limitation; a future
+self-decompile workflow may introduce a separately evidenced verified status.

@@ -142,10 +142,19 @@ The repository now has:
 - a GSI adapter that validates decoded values, keeps `ducked` unknown and returns
   unavailable when the native inputs cannot be reconstructed;
 - a machine-readable qualification harness that binds map, build, DLL/resource
-  hashes and model revision without tolerance or fabricated native vectors.
+  hashes, decompiled/normalized-field identity, an explicit model revision and the
+  `unverified-source-pair` status without tolerance or fabricated native vectors.
+
+Qualification cases may preserve `nativeFailureReason` and a trace containing the first
+sample, first/second field results, collision branch/correction, second sample and
+selected stage. That trace is evidence-only, not a runtime input. The current harness
+compares final native validity and final damage only; it does not by itself close Q1–Q3.
+Those questions still require Windows trace instrumentation or equivalent native debug
+capture.
 
 `predictC4Outcome` remains unavailable for valid inputs because the native sample,
 collision correction and second-sample selection are not externally reconstructable.
 This is intentional fail-closed behavior. The only remaining action that requires
-Windows/live CS2 is one matched-build differential-vector run to resolve and qualify
-that complete native path; no static document or field parse is a substitute for it.
+Windows/live CS2 is one matched-build differential capture with final vectors and
+trace instrumentation to resolve and qualify that complete native path; no static
+document or field parse is a substitute for it.

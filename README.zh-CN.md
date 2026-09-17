@@ -74,14 +74,20 @@ predictC4Outcome({
   health,
 });
 
-// parser 要求显式 provenance；未知时 resourceSha256 才可为 null。
+// parser 要求显式 provenance；未知 hash 用 null 表示。
 parseBombDamageVdata(vdataText, {
   mapName: 'de_mirage',
   sourceBuildId: '25218825',
   resourceSha256: compiledResourceSha256,
+  decompiledVdataSha256,
   extraction: { tool: 'Source 2 Viewer', revision: '20.0.6980' },
 });
 ```
+
+Parser 会记录 `sourcePairStatus: "unverified-source-pair"`：同时对用户提供的
+compiled resource 与 decompiled text 做 hash，并不能证明二者存在来源关系。Node
+extractor 还会记录 decompiled hash 与 canonical `normalizedFieldSha256`；qualification
+会绑定这些 identity，但保留 source-pair 未验证这一限制。
 
 `C4Outcome` 区分 `exact`、`bounded` 与 `unavailable`。对于已经证明完整覆盖的伤害区间，
 最小伤害达到 HP 则确定致死，最大伤害小于 HP 则确定存活，否则为 `indeterminate`。
@@ -114,6 +120,13 @@ cs2-c4-damage qualify vectors.json field.json
 
 `predict` 输出 fail-closed 的顶层结果。可选的 `--sample-position` 只输出明确标记的
 field-only 计算；它不是 native-parity prediction，也不是 conservative native damage envelope。
+
+Qualification vectors 必须包含 `schemaVersion: 1`、明确的 `modelRevision`、compiled 与
+decompiled resource hash、`normalizedFieldSha256`，以及
+`sourcePairStatus: "unverified-source-pair"`，并可保留 `nativeFailureReason` 与仅用于
+evidence 的 native trace。当前 harness 只比较最终 native validity 和 damage。通过要求至少
+一个 native-valid case、所有正例 exact damage 匹配且没有未解决的正例；负例单独统计。它
+本身不能闭合 Q1–Q3，这仍需要 Windows trace instrumentation 或等价的 native debug capture。
 
 ## 开发
 

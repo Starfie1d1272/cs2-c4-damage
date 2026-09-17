@@ -11,6 +11,7 @@ export const EXTERNAL_MODEL_REVISION = 'external-static-v1';
 export interface ParseBombDamageOptions {
   readonly mapName: string;
   readonly resourceSha256: string | null;
+  readonly decompiledVdataSha256?: string | null;
   readonly sourceClientSha256?: string | null;
   readonly sourceBuildId: string | null;
   readonly extraction: FieldMetadata['extraction'];
@@ -44,18 +45,19 @@ function findProperty(text: string, key: string): string {
 
 function findBlob(text: string, key: string): string {
   const tail = findProperty(text, key);
-  const opening = tail.indexOf('#[');
-  if (opening < 0) {
+  const opening = /^\s*#\[/.exec(tail);
+  if (!opening) {
     throw new BombDamageParseError('invalid-blob', `${key} is not a KV3 blob`);
   }
-  const closing = tail.indexOf(']', opening + 2);
+  const bodyStart = opening[0].length;
+  const closing = tail.indexOf(']', bodyStart);
   if (closing < 0) {
     throw new BombDamageParseError(
       'unterminated-blob',
       `${key} blob is not closed`,
     );
   }
-  return tail.slice(opening + 2, closing);
+  return tail.slice(bodyStart, closing);
 }
 
 function parseHexBlob(body: string, key: string): Uint8Array {
@@ -91,8 +93,24 @@ function parseHexBlob(body: string, key: string): Uint8Array {
 }
 
 function readVersion(text: string): 1 | 2 {
-  const tail = findProperty(text, 'version');
-  const match = /^\s*(\d+)/.exec(tail);
+  const headerTail = findProperty(text, 'header');
+  const headerOpening = /^\s*\{/.exec(headerTail);
+  if (!headerOpening) {
+    throw new BombDamageParseError(
+      'invalid-version',
+      'Missing header object for resource version',
+    );
+  }
+  const headerBodyStart = headerOpening[0].length;
+  const headerClosing = headerTail.indexOf('}', headerBodyStart);
+  if (headerClosing < 0) {
+    throw new BombDamageParseError(
+      'invalid-version',
+      'Unterminated header object for resource version',
+    );
+  }
+  const headerBody = headerTail.slice(headerBodyStart, headerClosing);
+  const match = /(?:^|[\s{])version\s*=\s*(\d+)/m.exec(headerBody);
   if (!match)
     throw new BombDamageParseError(
       'invalid-version',
@@ -233,6 +251,17 @@ function validateOptions(options: ParseBombDamageOptions): void {
     );
   }
   if (
+    options.decompiledVdataSha256 !== undefined &&
+    options.decompiledVdataSha256 !== null &&
+    (typeof options.decompiledVdataSha256 !== 'string' ||
+      !/^[0-9a-f]{64}$/i.test(options.decompiledVdataSha256))
+  ) {
+    throw new BombDamageParseError(
+      'invalid-decompiled-vdata-sha256',
+      'decompiledVdataSha256 must be null or a SHA-256 hex string',
+    );
+  }
+  if (
     options.sourceClientSha256 !== undefined &&
     options.sourceClientSha256 !== null &&
     (typeof options.sourceClientSha256 !== 'string' ||
@@ -320,6 +349,9 @@ export function parseBombDamageVdata(
         ? {}
         : { sourceClientSha256: options.sourceClientSha256 }),
       resourceSha256: options.resourceSha256,
+      decompiledVdataSha256: options.decompiledVdataSha256 ?? null,
+      normalizedFieldSha256: null,
+      sourcePairStatus: 'unverified-source-pair',
       mapName: options.mapName,
       sourceResourceVersion,
       extraction: {

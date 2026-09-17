@@ -5,6 +5,9 @@ export interface Vec3 {
   readonly z: number;
 }
 
+/** The current extractor does not prove that a decompiled text file came from the compiled resource. */
+export type SourcePairStatus = 'unverified-source-pair';
+
 /** Library SemVer is intentionally absent: it does not identify gameplay data. */
 export interface FieldMetadata {
   readonly formatVersion: 1;
@@ -13,6 +16,11 @@ export interface FieldMetadata {
   /** Optional native binary identity; absence keeps qualification fail-closed. */
   readonly sourceClientSha256?: string | null;
   readonly resourceSha256: string | null;
+  /** SHA-256 of the exact decompiled text when the extractor received it. */
+  readonly decompiledVdataSha256: string | null;
+  /** SHA-256 of the canonical normalized field payload, excluding metadata identities. */
+  readonly normalizedFieldSha256: string | null;
+  readonly sourcePairStatus: SourcePairStatus;
   readonly mapName: string;
   readonly sourceResourceVersion: 1 | 2;
   readonly extraction: {

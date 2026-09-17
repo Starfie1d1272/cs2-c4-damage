@@ -1,5 +1,6 @@
 export type {
   Vec3,
+  SourcePairStatus,
   FieldMetadata,
   Bombsite,
   FieldRecord,
@@ -37,12 +38,14 @@ export {
   MAX_C4_DAMAGE,
   MAX_FIELD_DAMAGE,
   MAX_PHASE,
+  MIN_DIRECTION_LENGTH,
   applyPlayerCorrections,
   bias,
   calculateRawFieldDamage,
   correctionRangeForDucked,
   decodeBlastDirection,
   integerizeDamage,
+  normalizeDirection,
   scaleDamage,
 } from './engine/math.js';
 export {
@@ -62,7 +65,10 @@ export {
 } from './qualification/index.js';
 export type {
   QualificationCase,
+  QualificationCollisionTrace,
+  QualificationFieldTrace,
   QualificationMismatch,
   QualificationResult,
+  QualificationTrace,
   QualificationVectors,
 } from './qualification/index.js';

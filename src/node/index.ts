@@ -22,14 +22,19 @@ export interface ExtractFieldOptions {
 export async function extractField(
   options: ExtractFieldOptions,
 ): Promise<BombDamageField> {
-  const [vdata, compiled] = await Promise.all([
-    readFile(options.vdataPath, 'utf8'),
+  const [vdataBytes, compiled] = await Promise.all([
+    readFile(options.vdataPath),
     readFile(options.compiledPath),
   ]);
+  const vdata = vdataBytes.toString('utf8');
+  const decompiledVdataSha256 = createHash('sha256')
+    .update(vdataBytes)
+    .digest('hex');
   const resourceSha256 = createHash('sha256').update(compiled).digest('hex');
   const parserOptions: ParseBombDamageOptions = {
     mapName: options.mapName,
     resourceSha256,
+    decompiledVdataSha256,
     sourceBuildId: options.sourceBuildId ?? null,
     ...(options.sourceClientSha256 === undefined
       ? {}
@@ -40,7 +45,26 @@ export async function extractField(
     },
     modelRevision: options.modelRevision ?? EXTERNAL_MODEL_REVISION,
   };
-  return parseBombDamageVdata(vdata, parserOptions);
+  const field = parseBombDamageVdata(vdata, parserOptions);
+  return {
+    ...field,
+    metadata: {
+      ...field.metadata,
+      normalizedFieldSha256: computeNormalizedFieldSha256(field),
+    },
+  };
+}
+
+/** Hash the canonical field payload without circular metadata identities. */
+export function computeNormalizedFieldSha256(field: BombDamageField): string {
+  assertValidBombDamageField(field);
+  const payload = JSON.stringify({
+    sourceResourceVersion: field.metadata.sourceResourceVersion,
+    bombsites: field.bombsites,
+    positions: field.positions,
+    records: field.records,
+  });
+  return createHash('sha256').update(payload).digest('hex');
 }
 
 export async function readNormalizedField(
@@ -48,6 +72,13 @@ export async function readNormalizedField(
 ): Promise<BombDamageField> {
   const value: unknown = JSON.parse(await readFile(path, 'utf8'));
   assertValidBombDamageField(value);
+  if (
+    value.metadata.normalizedFieldSha256 !== null &&
+    value.metadata.normalizedFieldSha256.toLowerCase() !==
+      computeNormalizedFieldSha256(value)
+  ) {
+    throw new Error('normalized-field-sha256-mismatch');
+  }
   return value;
 }
 
@@ -56,7 +87,21 @@ export async function writeNormalizedField(
   field: BombDamageField,
 ): Promise<void> {
   assertValidBombDamageField(field);
-  await writeFile(path, `${JSON.stringify(field, null, 2)}\n`, 'utf8');
+  const normalizedFieldSha256 = computeNormalizedFieldSha256(field);
+  if (
+    field.metadata.normalizedFieldSha256 !== null &&
+    field.metadata.normalizedFieldSha256.toLowerCase() !== normalizedFieldSha256
+  ) {
+    throw new Error('normalized-field-sha256-mismatch');
+  }
+  const output =
+    field.metadata.normalizedFieldSha256 === null
+      ? {
+          ...field,
+          metadata: { ...field.metadata, normalizedFieldSha256 },
+        }
+      : field;
+  await writeFile(path, `${JSON.stringify(output, null, 2)}\n`, 'utf8');
 }
 
 export function summarizeField(

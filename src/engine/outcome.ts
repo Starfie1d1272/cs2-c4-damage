@@ -1,5 +1,6 @@
 import type { C4Outcome, NumericRange, PredictC4Input } from './types.js';
 import { validateBombDamageField } from '../field/validation.js';
+import { normalizeDirection } from './math.js';
 
 /**
  * Arithmetic only: the caller must establish a conservative integer damage envelope.
@@ -42,9 +43,7 @@ export function outcomeFromDamageRange(
 /** Deliberate fail-closed foundation: no model/resource pair is qualified yet. */
 export function predictC4Outcome(input: PredictC4Input): C4Outcome {
   const forward = input?.playerForward;
-  const forwardLengthSquared = forward
-    ? forward.x * forward.x + forward.y * forward.y + forward.z * forward.z
-    : 0;
+  const normalizedForward = forward ? normalizeDirection(forward) : undefined;
   if (
     !input ||
     (input.ducked !== undefined && typeof input.ducked !== 'boolean') ||
@@ -59,12 +58,7 @@ export function predictC4Outcome(input: PredictC4Input): C4Outcome {
         ),
     ) ||
     !forward ||
-    ![forward.x, forward.y, forward.z].every(
-      (coordinate) =>
-        typeof coordinate === 'number' && Number.isFinite(coordinate),
-    ) ||
-    !Number.isFinite(forwardLengthSquared) ||
-    forwardLengthSquared <= 0
+    !normalizedForward
   ) {
     return { status: 'unavailable', reason: 'invalid-predict-input' };
   }

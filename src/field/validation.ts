@@ -2,6 +2,12 @@ import type { BombDamageField, Vec3 } from './types.js';
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/i;
 
+function isNullableSha256(value: unknown): value is string | null {
+  return (
+    value === null || (typeof value === 'string' && SHA256_PATTERN.test(value))
+  );
+}
+
 export class FieldValidationError extends Error {
   readonly reasons: readonly string[];
 
@@ -63,6 +69,15 @@ export function validateBombDamageField(field: unknown): readonly string[] {
     ) {
       reasons.push('invalid-resource-sha256');
     }
+    if (!isNullableSha256(metadata.decompiledVdataSha256)) {
+      reasons.push('invalid-decompiled-vdata-sha256');
+    }
+    if (!isNullableSha256(metadata.normalizedFieldSha256)) {
+      reasons.push('invalid-normalized-field-sha256');
+    }
+    if (metadata.sourcePairStatus !== 'unverified-source-pair') {
+      reasons.push('invalid-source-pair-status');
+    }
     if (!isNonEmptyString(metadata.mapName)) reasons.push('missing-map-name');
     if (
       metadata.sourceResourceVersion !== 1 &&
@@ -93,6 +108,7 @@ export function validateBombDamageField(field: unknown): readonly string[] {
   if (!Array.isArray(records)) reasons.push('missing-records');
 
   if (Array.isArray(bombsites)) {
+    if (bombsites.length === 0) reasons.push('empty-bombsites');
     bombsites.forEach((site, index) => {
       if (site === null || typeof site !== 'object') {
         reasons.push(`bombsite-${index}-not-object`);
@@ -123,12 +139,14 @@ export function validateBombDamageField(field: unknown): readonly string[] {
   }
 
   if (Array.isArray(positions)) {
+    if (positions.length === 0) reasons.push('empty-positions');
     positions.forEach((position, index) => {
       if (!isFiniteVec3(position)) reasons.push(`position-${index}-invalid`);
     });
   }
 
   if (Array.isArray(records)) {
+    if (records.length === 0) reasons.push('empty-records');
     records.forEach((record, index) => {
       if (record === null || typeof record !== 'object') {
         reasons.push(`record-${index}-not-object`);

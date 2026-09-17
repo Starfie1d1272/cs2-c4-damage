@@ -3,6 +3,7 @@ import type { FieldRecord, Vec3 } from '../field/types.js';
 export const MAX_C4_DAMAGE = 255;
 export const MAX_FIELD_DAMAGE = 100;
 export const MAX_PHASE = 1800;
+export const MIN_DIRECTION_LENGTH = 1e-12;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -51,9 +52,25 @@ function dot(left: Vec3, right: Vec3): number {
   return left.x * right.x + left.y * right.y + left.z * right.z;
 }
 
-function validDirection(value: Vec3): boolean {
-  const lengthSquared = dot(value, value);
-  return Number.isFinite(lengthSquared) && lengthSquared > 0;
+/** Normalize a direction and reject non-finite or effectively zero vectors. */
+export function normalizeDirection(value: Vec3): Vec3 | undefined {
+  if (
+    ![value.x, value.y, value.z].every(
+      (coordinate) =>
+        typeof coordinate === 'number' && Number.isFinite(coordinate),
+    )
+  ) {
+    return undefined;
+  }
+  const length = Math.hypot(value.x, value.y, value.z);
+  if (!Number.isFinite(length) || length < MIN_DIRECTION_LENGTH) {
+    return undefined;
+  }
+  return {
+    x: value.x / length,
+    y: value.y / length,
+    z: value.z / length,
+  };
 }
 
 /** Apply only the statically documented player stance/facing correction. */
@@ -63,12 +80,17 @@ export function applyPlayerCorrections(
   playerForward: Vec3,
   ducked: boolean,
 ): number | undefined {
-  if (!validDirection(blastDirection) || !validDirection(playerForward))
-    return undefined;
+  const normalizedBlastDirection = normalizeDirection(blastDirection);
+  const normalizedPlayerForward = normalizeDirection(playerForward);
+  if (!normalizedBlastDirection || !normalizedPlayerForward) return undefined;
   let damage = integerizeDamage(rawDamage);
   if (damage >= 100) return damage;
   if (ducked) damage = scaleDamage(damage, 0.45);
-  const facing = clamp((dot(blastDirection, playerForward) + 1) / 2, 0, 1);
+  const facing = clamp(
+    (dot(normalizedBlastDirection, normalizedPlayerForward) + 1) / 2,
+    0,
+    1,
+  );
   return scaleDamage(damage, 0.53 - 0.06 * facing);
 }
 

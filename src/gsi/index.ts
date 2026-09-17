@@ -2,6 +2,7 @@ import type { Vec3 } from '../field/types.js';
 import type { BombDamageField } from '../field/types.js';
 import type { C4Outcome } from '../engine/types.js';
 import { predictC4Outcome } from '../engine/outcome.js';
+import { normalizeDirection } from '../engine/math.js';
 
 /** Already decoded GSI-like snapshot; not Valve wire JSON or a complete GSI schema. */
 export interface GsiSnapshot {
@@ -29,8 +30,7 @@ function validVec3(value: unknown): value is Vec3 {
 }
 
 function validForward(value: unknown): value is Vec3 {
-  if (!validVec3(value)) return false;
-  return value.x * value.x + value.y * value.y + value.z * value.z > 0;
+  return validVec3(value) && normalizeDirection(value) !== undefined;
 }
 
 function validHealth(value: unknown): value is number {

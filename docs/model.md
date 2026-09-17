@@ -34,6 +34,8 @@ finite/bounded values, exact record cardinality and provenance. The field-only m
 implements 32-unit AABB expansion, bombsite-major indexing, deterministic 3D nearest
 lookup, the documented Phase/power conversion, yaw/pitch `/256` direction decoding,
 integer truncation and the crouch/facing Bias arithmetic.
+Packed representation validation does not invent a narrower gameplay-domain limit for
+Phase, coordinates or bomb power; those limits remain subject to evidence.
 
 `lookupBakedField` requires an explicit sample point and reports its internal
 nearest/overlap policy. `evaluateBakedFieldCorrection` can enumerate known
@@ -89,7 +91,15 @@ VPKs, DLLs or complete vdata resources. The `qualify <vectors.json> <field>` com
 requires exact map/build/client/resource/model identity and reports pass/fail totals,
 mismatches and unresolved cases without tolerance. Vector cases use decoded Vec3
 objects or JSON triples and must record whether the native query itself was valid;
-this repository does not fabricate native vectors.
+this repository does not fabricate native vectors. Evidence must bind compiled and
+decompiled resource hashes, the canonical `normalizedFieldSha256`, and the explicit
+`sourcePairStatus`; the current status is always `unverified-source-pair` because the
+extractor does not self-decompile compiled resources. Optional `nativeFailureReason`
+and trace fields preserve Windows evidence, but the current harness compares final
+native validity and damage only. A `passed` result requires non-empty evidence with at
+least one native-valid case, an exact damage match for every native-valid case, and no unresolved positive
+case; negative validity cases are reported separately. Trace capture is still required
+to close Q1–Q3.
 
 Record exact build, map/resource SHA-256, extractor revision, platform, model revision,
 standard game rules and synchronized inputs with expected native query and actual

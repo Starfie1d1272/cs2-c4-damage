@@ -15,6 +15,7 @@ import {
   scaleDamage,
   validateBombDamageField,
 } from '../src/index.js';
+import { computeNormalizedFieldSha256 } from '../src/node/index.js';
 import { field } from './fixtures/synthetic.js';
 
 const SITE =
@@ -40,9 +41,13 @@ describe('baked-field parser and spatial engine', () => {
         mapName: 'de_mirage',
         sourceBuildId: '25218825',
         resourceSha256: 'a'.repeat(64),
+        decompiledVdataSha256: 'b'.repeat(64),
         extraction: { tool: 'synthetic-source2viewer', revision: 'test' },
       });
       expect(parsed.metadata.sourceResourceVersion).toBe(version);
+      expect(parsed.metadata.decompiledVdataSha256).toBe('b'.repeat(64));
+      expect(parsed.metadata.normalizedFieldSha256).toBeNull();
+      expect(parsed.metadata.sourcePairStatus).toBe('unverified-source-pair');
       expect(parsed.bombsites).toHaveLength(1);
       expect(parsed.positions).toEqual([
         { x: 0, y: 0, z: 0 },
@@ -53,6 +58,7 @@ describe('baked-field parser and spatial engine', () => {
         { phase: 8, yaw: 64, pitch: 0 },
       ]);
       expect(validateBombDamageField(parsed)).toEqual([]);
+      expect(computeNormalizedFieldSha256(parsed)).toMatch(/^[0-9a-f]{64}$/);
     },
   );
 
@@ -81,6 +87,56 @@ describe('baked-field parser and spatial engine', () => {
         extraction: { tool: 'test', revision: '1' },
       }),
     ).toThrow(BombDamageParseError);
+    expect(() =>
+      parseBombDamageVdata(
+        vdata(1).replace(`bombsites = #[ ${SITE} ]`, 'bombsites = "garbage"'),
+        {
+          mapName: 'map',
+          sourceBuildId: null,
+          resourceSha256: null,
+          extraction: { tool: 'test', revision: '1' },
+        },
+      ),
+    ).toThrow(BombDamageParseError);
+    expect(() =>
+      parseBombDamageVdata(
+        vdata(1).replace(
+          'header = { version = 1 }',
+          'header = { name = "resource" }\nversion = 1',
+        ),
+        {
+          mapName: 'map',
+          sourceBuildId: null,
+          resourceSha256: null,
+          extraction: { tool: 'test', revision: '1' },
+        },
+      ),
+    ).toThrow(BombDamageParseError);
+    expect(() =>
+      parseBombDamageVdata(
+        vdata(1).replace(SITE, '').replace(POSITIONS, '').replace(RECORDS, ''),
+        {
+          mapName: 'map',
+          sourceBuildId: null,
+          resourceSha256: null,
+          extraction: { tool: 'test', revision: '1' },
+        },
+      ),
+    ).toThrow('empty-bombsites');
+    expect(
+      validateBombDamageField({
+        ...field,
+        bombsites: [],
+        positions: [],
+        records: [],
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        'empty-bombsites',
+        'empty-positions',
+        'empty-records',
+      ]),
+    );
   });
 
   it('expands bombsite bounds and handles overlap/outside deterministically', () => {
@@ -143,6 +199,15 @@ describe('baked-field parser and spatial engine', () => {
     expect(positive).toBe(scaleDamage(50, 0.47));
     expect(negative).toBe(scaleDamage(50, 0.53));
     expect(orthogonal).toBe(scaleDamage(50, 0.5));
+    expect(
+      applyPlayerCorrections(50, direction, { x: 0.5, y: 0, z: 0 }, false),
+    ).toBe(positive);
+    expect(
+      applyPlayerCorrections(50, { x: 0.5, y: 0, z: 0 }, direction, false),
+    ).toBe(positive);
+    expect(
+      applyPlayerCorrections(50, direction, { x: 1e-13, y: 0, z: 0 }, false),
+    ).toBeUndefined();
     expect(applyPlayerCorrections(100, direction, direction, true)).toBe(100);
     expect(applyPlayerCorrections(99, direction, direction, true)).toBe(
       scaleDamage(scaleDamage(99, 0.45), 0.47),

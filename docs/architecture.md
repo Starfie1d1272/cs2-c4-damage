@@ -17,21 +17,28 @@ telemetry integrations. At call time adapters translate snapshots into engine in
 and records. Records use bombsite-major indexing; a site index is not an A/B label.
 Phase is a raw uint16 and Yaw/Pitch raw uint8 values, not HP or degrees. The parser
 and validator reject malformed/nonfinite coordinates, inverted bounds, unsupported
-versions, malformed hashes and inconsistent record counts. No caller-provided field
-is trusted for prediction without validation.
+versions, empty field arrays, malformed hashes and inconsistent record counts. Blob
+properties must bind directly to their `#[...]` value and the resource version must be
+read from `header.version`; no caller-provided field is trusted for prediction without
+validation.
 
 The parser consumes a documented VRF/Source 2 Viewer decompiled representation.
 No full Source 2 binary system will be reimplemented for this foundation.
 Parser syntax/provenance validation is distinct from model qualification. A successful
 parse does not establish that the field reproduces the native entity query.
+Packed integer widths are validated at decode time; no narrower gameplay-domain range
+for Phase or coordinate/power values is invented beyond the proven resource contract.
 
 `formatVersion: 1` describes this project's proposed normalized shape;
 `sourceResourceVersion: 1 | 2` describes the source payload version.
 `modelRevision` identifies qualified semantic rules, not an npm version.
-`sourceBuildId` and `resourceSha256` may be null to represent unknown provenance;
-non-null strings do not prove correctness. Extractor identity/revision and map name
-must also be retained. Qualification vectors bind all relevant identities to evidence;
-no user-set `qualified: true` flag should enable exact predictions.
+`sourceBuildId`, `resourceSha256`, `decompiledVdataSha256` and
+`normalizedFieldSha256` may be null to represent unknown provenance; non-null strings do
+not prove correctness. Extractor identity/revision and map name must also be retained.
+The current `sourcePairStatus` is explicitly `unverified-source-pair`: the Node extractor
+hashes supplied compiled/decompiled inputs but does not decompile the compiled resource
+itself. Qualification vectors bind the available identities and this limitation to
+evidence; no user-set `qualified: true` flag should enable exact predictions.
 
 ## Field and outcome semantics
 
@@ -73,4 +80,6 @@ Core has zero runtime dependencies, neutral-platform compilation and no Node/DOM
 only `/node` uses Node APIs. The CLI reads user-owned resources but does not vendor
 them. Only dist and selected license/readme files are package-allowlisted. Research and
 game resources are not published. `private: true` guards publication; npm/release
-workflows remain out of scope.
+workflows remain out of scope. Qualification traces are evidence records; the current
+harness compares final native validity/damage and does not claim to close Q1–Q3 without
+Windows trace capture.
