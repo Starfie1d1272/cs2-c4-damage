@@ -12,13 +12,32 @@ Copyright belongs to unicbm; reproduced and used with permission recorded in
 [authorization](authorization.md), not relicensed as Apache-2.0. Its native calling /
 hooking suggestions describe the author's original research context, not this
 library's architecture. No addresses or signatures are used by runtime code.
-The source includes binary hashes and local evidence paths, but those binaries and
-underlying offline evidence are not supplied, copied or independently re-audited here.
+The source includes binary hashes and local evidence paths. The binaries used for the
+current static recheck were downloaded into gitignored `.agent-tmp/` only; they are
+not supplied, copied or committed.
 
 The client HUD query, server actual-damage chain, ABI, integer/failure output, stance /
 facing corrections and armor semantics are the author's findings. This repository's
 external API, uncertainty model, arithmetic and synthetic tests are subsequent work.
 Static reverse engineering is strong scoped evidence; it is not dynamic parity.
+
+## Current static recheck
+
+On 2026-09-18 the public App 730 branch resolved to build `25218825`. The common
+depot manifest was `2053759441494650084`; the Windows depot manifest was
+`5806169188224907599`. The downloaded `client.dll` and `server.dll` SHA-256 values
+were respectively `a0c195f0b6ec00915ef08c548200a010ebbe7982d3a4bc468cad939b67c8c4e3`
+and `1cac9113b10037c0ba8fb739e5538c21d7ddaee5529325ca4f7e9a241fad43cc`, exactly
+matching the supplied report. The downloaded `de_mirage.vpk` SHA-256 was
+`dc8f0d125014b00218582d0ab9a2f684638fa17054924fba34d07c2ef479e268`; the extracted
+`maps/de_mirage/baked_bomb_damage.vdata_c` was 712,207 bytes with SHA-256
+`ab848262cd263358d4568a7566e492450303d60980e1aaa47b98e07e6f4a7776`. Its logical
+resource was then decompiled to a temporary text artifact with SHA-256
+`528aad1c4100b91e2b201de2e3594a7305b268eca9d59ebefc4cc36c1ec592de`.
+
+The static query/control-flow conclusions and their unresolved boundaries are in
+[native-query-closure](native-query-closure.md). No dynamic Windows/native vectors
+were captured, so this recheck does not change the project's qualification status.
 
 ## Public prior art inspected on 2026-09-17
 
