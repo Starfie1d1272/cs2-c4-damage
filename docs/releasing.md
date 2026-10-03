@@ -24,9 +24,9 @@ The GitHub trusted publisher is configured for subsequent releases:
 
 No `NPM_TOKEN` secret is needed. The workflow uses a GitHub-hosted runner, Node.js 24,
 `id-token: write` and [npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers).
-The configured publisher is ready for the next version; a subsequent automated
-publication will exercise the full OIDC path and record GitHub provenance. Do not rerun
-publication of the existing beta version.
+Version `0.1.0` completed the full OIDC publication path with GitHub provenance in
+[this run](https://github.com/Starfie1d1272/cs2-c4-damage/actions/runs/37149072991).
+Subsequent releases use the same workflow. Do not rerun publication of an existing version.
 
 ### Reconfiguring a publisher
 

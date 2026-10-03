@@ -5,7 +5,7 @@ for installation, map preparation and GSI integration.
 
 | Guide                              | Contents                                                              |
 | ---------------------------------- | --------------------------------------------------------------------- |
-| [Resources](resources.md)          | Extracting maps, build identities and updating normalized fields.     |
+| [Resources](resources.md)          | Bundled maps, automatic loading and batch regeneration.               |
 | [Model and API](model.md)          | Predictors, result fields, sampling and collision-provider contracts. |
 | [Architecture](architecture.md)    | Module boundaries, data flow and package entries.                     |
 | [Contributing](../CONTRIBUTING.md) | Local setup, tests and source conventions.                            |

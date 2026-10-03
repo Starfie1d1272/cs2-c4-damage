@@ -5,6 +5,8 @@ identities are recorded separately in resource metadata.
 
 ## 0.1.0
 
+Published on 2026-10-04 (Asia/Shanghai) under npm `latest` via GitHub OIDC.
+
 - Bundle compact data for 10 maps, including Cache, with a versioned manifest and automatic loading.
 - Add `createStandingC4Predictor` and `createStandingGsiPredictor` for a single HUD damage value.
 - Add `createBundledGsiPredictor` with automatic map selection, bounded caching and reset handling.
