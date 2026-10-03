@@ -1,154 +1,131 @@
 # cs2-c4-damage
 
-[中文完整说明](README.zh-CN.md)
+[简体中文](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/README.zh-CN.md)
 
-An independent, reusable TypeScript library for parsing current-CS2 baked C4 damage
-fields, exposing auditable field-only calculations, and preparing matched builds for
-native qualification. **The external model is implemented and qualification-ready,
-but it is not dynamically native-parity-qualified.**
+Calculate CS2 C4 damage, remaining HP and lethality from baked map damage fields and
+Game State Integration (GSI) snapshots.
 
-> This project does not inject into CS2.
->
-> This project does not hook client.dll/server.dll.
->
-> This project does not ship Valve game assets.
+- Reusable predictors for GSI updates, with standing and crouched scenarios.
+- Native-style float32 arithmetic, midpoint KD-tree lookup and two-stage sampling.
+- Resource extraction, validation and SHA-256 provenance tracking.
+- Per-stage traces for inspecting and comparing calculations.
+- TypeScript declarations, ESM/CJS exports, a CLI and zero runtime npm dependencies.
 
-**GSI-only estimation cannot currently claim complete native parity,
-because GSI does not expose every input used by the native query.**
+## Install
 
-## Status and scope
+Requires Node.js 22 or later for the CLI and Node helpers.
 
-Implemented:
-
-- strict parsing and validation of Source 2 Viewer decompiled
-  `CS2_BOMB_DAMAGE_DATA` resources (versions 1 and 2);
-- 32-unit bombsite expansion, deterministic field lookup, raw Phase/power
-  conversion, `/256` direction decoding, and documented Bias/truncation math;
-- an explicit-sample field-only helper that keeps native collision and second-sample
-  uncertainty visible;
-- a decoded GSI-like adapter, Node extraction/inspection/prediction CLI, and a
-  machine-readable qualification harness with build/resource identity checks.
-
-`predictC4Outcome` deliberately returns `unavailable: model-not-qualified` for
-valid inputs. Static analysis proved that the native query needs a target-supplied
-sample point, collision/ground truth and a conditional second sample that ordinary
-field data plus GSI cannot reconstruct. See [native query closure](docs/research/native-query-closure.md).
-
-The `exact` outcome is reserved for a qualified complete model. `bounded` is
-available only from `outcomeFromDamageRange` when the caller supplies a proven
-inclusive envelope; a field-only estimate is not silently promoted to that envelope.
-Unknown is never zero, standing, or a successful native query.
-
-This is a library, not a HUD. It has zero runtime dependencies and no dependency on
-RivalHub, React, OBS, Fastify, CSTV or a particular GSI library.
-RivalHub-Broadcast may become one downstream consumer.
-
-## Architecture
-
-```text
-user-owned CS2 map resource + compiled resource
-  → Node extraction / normalized field + provenance
-  → pure field parser, lookup and arithmetic
-  → decoded telemetry adapter / qualification harness
-  → exact only after matched-build native qualification
+```sh
+npm install cs2-c4-damage@beta
 ```
 
-The field contract retains bombsite bounds/power, positions, raw Phase/Yaw/Pitch
-and extraction provenance. Field format version, model revision, CS2 build/resource
-identity and library SemVer have separate meanings. See [architecture](docs/architecture.md),
-[model status](docs/model.md), and [provenance](docs/research/PROVENANCE.md).
+The root library and GSI adapter are pure TypeScript/JavaScript and can also be bundled
+for browser applications. File access and decompiler execution live in `/node`.
 
-## API
+## Prepare a map
+
+Use [Source 2 Viewer](https://s2v.app) to extract
+`maps/<map>/baked_bomb_damage.vdata_c` from your local CS2 map VPK. Keep the field paired
+with the game build it came from. Game resources are supplied by your application.
+
+The CLI can run your local Source2Viewer-CLI and normalize its output:
+
+```sh
+npx cs2-c4-damage extract \
+  --compiled /your/resources/baked_bomb_damage.vdata_c \
+  --decompiler /your/tools/Source2Viewer-CLI \
+  --decompiler-sha256 <sha256-of-the-executable> \
+  --map de_mirage --build-id 25687242 \
+  --out /your/resources/mirage.json
+
+npx cs2-c4-damage inspect /your/resources/mirage.json
+```
+
+Use `sha256sum`, `shasum -a 256`, or PowerShell `Get-FileHash -Algorithm SHA256` to
+compute the executable hash. You can also pass `--client-sha256` to record the matching
+client binary identity. If you already have decompiled text, use `--vdata <text-file>`
+instead of the two `--decompiler` options.
+
+See the [resource guide](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/resources.md)
+for build identities, extraction options and updating maps.
+
+## Predict from GSI
+
+Load the field and create the predictor once, then reuse it for incoming snapshots:
 
 ```ts
-import { outcomeFromDamageRange, predictC4Outcome } from 'cs2-c4-damage';
-import { assessGsiSnapshot } from 'cs2-c4-damage/gsi';
-import { parseBombDamageVdata } from 'cs2-c4-damage';
+import { readNormalizedField } from 'cs2-c4-damage/node';
+import { createGsiC4Predictor, decodeGsiSnapshot } from 'cs2-c4-damage/gsi';
 
-// Synthetic arithmetic example ONLY; these bounds are not inferred from GSI.
-outcomeFromDamageRange(50, { min: 40, max: 60 }, ['ducked']);
-// bounded; hpAfter: { min: 0, max: 10 }; lethal: 'indeterminate'
+const field = await readNormalizedField('/your/resources/mirage.json');
+const predict = createGsiC4Predictor(field);
 
-assessGsiSnapshot({ health: 50 });
-// Missing spatial values, unknown ducked, collision and native second sample.
+export function handleGsi(payload: unknown, steamId?: string) {
+  // steamId selects allplayers[steamId]; omit it to select player.
+  const result = predict(decodeGsiSnapshot(payload, steamId));
+  if (result.status === 'conditional') {
+    console.log(result.damage); // { min, max } across the evaluated scenarios
+    console.log(result.hpAfter, result.lethal);
+    console.log(result.scenarios); // individual posture, damage and sampling trace
+  }
+  return result;
+}
+```
 
-// With a valid field and ordinary external inputs this remains fail-closed until
-// a matched native qualification has established the missing semantics.
-predictC4Outcome({
-  field,
-  bombPosition,
-  playerPosition,
-  playerForward,
-  ducked,
-  health,
-});
+Enable the GSI data needed for bomb position, player position, forward and health.
+Field availability depends on your GSI configuration and viewing mode. The adapter
+accepts coordinate strings or numeric triples, handles planted/defusing bombs, and
+checks the map name when supplied. Your application owns the GSI HTTP receiver.
 
-// Parser provenance is explicit; unknown hashes are represented as null.
-parseBombDamageVdata(vdataText, {
-  mapName: 'de_mirage',
-  sourceBuildId: '25218825',
-  resourceSha256: compiledResourceSha256,
-  decompiledVdataSha256,
-  extraction: { tool: 'Source 2 Viewer', revision: '20.0.6980' },
+| Result        | Meaning                                                                                                                         |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `conditional` | Damage and HP ranges across the listed scenarios, plus `lethal`, `assumptions` and `unknownInputs`.                             |
+| `unavailable` | A required input is missing/invalid, the resource identity is unsupported, or the field query cannot resolve. Inspect `reason`. |
+
+`lethal` is `true`, `false` or `'indeterminate'` across those scenarios. For a decoded
+snapshot, call the prepared predictor directly. The one-shot alternative is
+`predictC4OutcomeFromGsi(field, snapshot)`.
+
+## Direct inputs and sampling
+
+Use the root API when your application already has player and bomb state:
+
+```ts
+import { createC4Predictor } from 'cs2-c4-damage';
+
+const predict = createC4Predictor(field);
+const result = predict({
+  bombPosition: { x: 100, y: 200, z: 0 },
+  playerPosition: { x: 150, y: 250, z: 0 },
+  playerForward: { x: 1, y: 0, z: 0 },
+  health: 100,
+  ducked: undefined, // evaluate both postures; pass true/false when known
 });
 ```
 
-The parser records `sourcePairStatus: "unverified-source-pair"`: hashing a supplied
-compiled resource and a supplied decompiled text does not prove that one was produced
-from the other. The Node extractor also records the decompiled hash and a canonical
-`normalizedFieldSha256`; qualification binds those identities but keeps the source-pair
-limitation explicit.
+Optional `nativeState` supplies the collision bounds/transform and a ground result or
+collision-query provider. `runStaticSampling` exposes the first lookup, second lookup,
+selected stage and corrected damage. See the
+[model and API guide](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/model.md).
 
-`C4Outcome` distinguishes `exact`, `bounded` and `unavailable`. For a proven
-inclusive damage envelope, lethal is true when its minimum reaches HP, false when
-its maximum is below HP, and indeterminate otherwise. Equal endpoints remain
-`bounded`; this helper does not qualify the source of the range.
-
-The GSI entry accepts an **already decoded GSI-like snapshot**, not raw Valve JSON.
-It validates bomb/player positions, forward and positive health, never manufactures
-crouch state, and does not assess freshness, observer coverage or RivalHub runtime
-continuity.
-
-## Node tooling
-
-The package exposes `cs2-c4-damage/node` and a same-package `cs2-c4-damage` binary.
-The extractor reads user-owned files; it does not vendor or publish Valve resources.
+## CLI
 
 ```sh
-cs2-c4-damage extract \
-  --vdata <decompiled.vdata> \
-  --compiled <baked_bomb_damage.vdata_c> \
-  --map de_mirage \
-  --build-id 25218825 \
-  --client-sha256 <client.dll-sha256> \
-  --out field.json
+npx cs2-c4-damage predict /your/resources/mirage.json \
+  --bomb-position 100,200,0 --player-position 150,250,0 \
+  --forward 1,0,0 --health 100 --ducked unknown
 
-cs2-c4-damage inspect field.json
-cs2-c4-damage predict field.json --bomb-position x,y,z \
-  --player-position x,y,z --forward x,y,z --health 100 \
-  --ducked unknown
-cs2-c4-damage qualify vectors.json field.json
+npx cs2-c4-damage compare-traces expected.json actual.json
+npx cs2-c4-damage qualify vectors.json /your/resources/mirage.json
 ```
 
-`predict` reports the fail-closed top-level outcome. An optional explicit
-`--sample-position` prints a clearly labelled field-only calculation; it is not a
-native-parity prediction or a conservative native damage envelope.
+`predict` prints JSON. `compare-traces` compares sampling stages and reports differing
+paths. `qualify` checks versioned reference vectors and their resource identities.
 
-Qualification vectors require `schemaVersion: 1`, an explicit `modelRevision`, compiled
-and decompiled resource hashes, `normalizedFieldSha256`, and
-`sourcePairStatus: "unverified-source-pair"`; they may preserve `nativeFailureReason`
-and an evidence-only native trace. The current harness compares final native validity
-and damage only. A pass requires at least one native-valid case, exact damage for every
-positive case, and no unresolved positive case; negative cases are reported separately.
-It does not by itself close Q1–Q3; those require Windows trace instrumentation or
-equivalent native debug capture.
-
-## Development
-
-Node >=22 and pnpm (version pinned in `package.json`):
+## Development and documentation
 
 ```sh
-pnpm install
+pnpm install --frozen-lockfile
 pnpm lint
 pnpm typecheck
 pnpm test
@@ -156,42 +133,18 @@ pnpm build
 pnpm test:package
 ```
 
-Single package, strict TypeScript, tsup, and ESM + CommonJS exports at the root,
-`/gsi` and `/node`. CI runs Node 22 and 24 on Linux, Windows and macOS. Deterministic
-tests use invented fixtures; real-asset qualification belongs in gitignored
-`qualification/` or `.agent-tmp/` and is not part of the package. See [contributing](CONTRIBUTING.md).
+- [Documentation index](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/README.md)
+- [Architecture](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/architecture.md)
+- [Changelog](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CHANGELOG.md)
+- [Contributing](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CONTRIBUTING.md) · [Releasing](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/releasing.md)
 
-The package remains private at version `0.0.0` as an accidental-publication guard.
-There is no npm release or GitHub release.
+New code is Apache-2.0. Original research is credited to
+[unicbm](https://github.com/unicbm) and retains its own copyright;
+see [credits](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CREDITS.md).
 
-## Research credits
+## Accuracy
 
-The current-CS2 native C4 damage query path, client HUD call chain, server
-actual-damage path, ABI, stance/facing correction and armor semantics are key native
-findings from [unicbm](https://github.com/unicbm)'s reverse-engineering research.
-This project was established with the author's permission to use that research.
-The external implementation, API, GSI uncertainty model and tests are this project's
-subsequent work; the original research is not a claim of external-engine parity.
-
-[Source 2 Viewer](https://s2v.app) /
-[ValveResourceFormat](https://github.com/ValveResourceFormat/ValveResourceFormat)
-provides public resource-format prior art and the planned extraction route. No
-upstream implementation code or Valve assets are copied into this package.
-Valve's [July 2026 update record](https://store.steampowered.com/news/posts/?appids=730&enddate=1784076119)
-documents precomputed bomb damage and the expanding shockwave.
-See [provenance and pinned references](docs/research/PROVENANCE.md).
-
-## License and attribution
-
-New project code is [Apache-2.0](LICENSE), supporting reuse in open-source,
-closed-source and commercial tooling with the license's attribution and patent terms.
-AGPL applications such as RivalHub-Broadcast may consume it as a dependency;
-their own obligations remain applicable.
-
-**Exception:** the original research Markdown is copyright unicbm, reproduced and
-used for implementation with permission. It is **not relicensed under Apache-2.0**.
-The permission record does not invent a separate public sublicense for that text.
-Read [authorization](docs/research/authorization.md), [NOTICE](NOTICE) and [CREDITS](CREDITS.md).
-Research text is excluded from the package's publish allowlist.
-
-This project is not endorsed by Valve, Counter-Strike or Steam.
+Results use model `cs2-win64-2026-10-02-static-v2` and matching map resources. GSI omits
+some posture and collision state, so ground resampling, dynamic obstacles or unusual
+transforms can prevent exact simulation. Reported ranges cover the listed scenarios,
+not every missing state; full native parity has not yet been validated in live captures.

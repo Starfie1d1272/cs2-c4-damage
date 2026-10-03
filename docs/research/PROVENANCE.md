@@ -21,7 +21,21 @@ facing corrections and armor semantics are the author's findings. This repositor
 external API, uncertainty model, arithmetic and synthetic tests are subsequent work.
 Static reverse engineering is strong scoped evidence; it is not dynamic parity.
 
-## Current static recheck
+## 2026-10-03 follow-up
+
+The [new audit](static-audit-2026-10-03.zh-CN.md) records different public manifests,
+client/server/tier0 hashes, a directly extracted and twice-decompiled Mirage resource,
+the executable decompiler identity, and synthetic instruction-replay boundaries.
+The old manifest was inaccessible anonymously, so the newer DLLs do not revalidate
+the original report's binary identity. In particular, the newer DLLs use `/255`
+direction decoding; the existing external `/256` baseline is not native parity.
+
+The research probe is independently authored and reads instructions only
+from user-supplied, hash-pinned files. PE parsing and CPU emulation use pefile and
+Unicorn in an isolated Python environment; neither is a library runtime dependency.
+No upstream implementation or binary bytes were copied into this repository.
+
+## Historical static recheck
 
 On 2026-09-18 the public App 730 branch resolved to build `25218825`. The common
 depot manifest was `2053759441494650084`; the Windows depot manifest was
@@ -74,10 +88,11 @@ No patch note proves stance formulas or full external parity.
 is a follow-up reference; retrieval returned HTTP 403 during initialization, so its
 current content was not independently verified. The supplied project requirements
 establish the current position/forward/HP and missing crouch constraints used here.
-A raw GSI parser is deliberately not claimed or implemented. Qualification must capture
-real, configured payloads and synchronize them with native sample observations.
+The current adapter decodes the selected player and planted/defusing bomb fields used
+by the model. Future live qualification will pair configured payloads with synchronized
+native sample observations.
 
-No other public implementation is relied upon by this foundation. Older distance-only
+No other public implementation is relied upon by this library. Older distance-only
 C4 calculators are not evidence for the current baked-field entity query.
 Any future source reuse requires license compatibility and attribution review.
 
@@ -85,7 +100,23 @@ Any future source reuse requires license compatibility and attribution review.
 
 The Node extractor hashes the user-supplied compiled resource and decompiled text
 independently, then records both hashes and a canonical normalized-field hash. It marks
-the metadata `sourcePairStatus` as `unverified-source-pair` because it does not invoke a
-decompiler and therefore cannot prove that the text came from the compiled resource.
-Qualification vectors bind these identities but must retain that limitation; a future
-self-decompile workflow may introduce a separately evidenced verified status.
+the metadata `sourcePairStatus` as `unverified-source-pair` for independently supplied
+files. The self-decompile path instead records its actual tool execution and resulting
+source pair, as described below. Qualification vectors bind the corresponding identities.
+
+## Implemented v2 follow-up
+
+`cs2-win64-2026-10-02-static-v2` implements the new arithmetic, full midpoint
+KD-tree and two-sweep partition, sample transform, and resampling state machine.
+`scripts/research/probe_static_model.py` generates only deterministic synthetic inputs
+and numeric outputs from the pinned client/tier0 instructions. The committed JSON
+oracle contains no Valve resource data, machine-code bytes or real telemetry.
+Its 183 built-tree queries, 256 sin/cos byte values, 400 Bias cases and 72 remap cases
+match TypeScript without tolerance. The original 40-probe suite remains separate.
+
+The Node extractor now has a self-decompile path that records the actual pinned tool
+run as `self-decompiled-source-pair`, including executable identity. Manual independent
+compiled/text input remains unverified. The new path was exercised on the same private
+Mirage compiled resource; its text and normalized payload hashes match the audit.
+No new binaries, map assets or private records are distributed. See the current
+[model](../model.md) for conditional-result assumptions and remaining native evidence gaps.

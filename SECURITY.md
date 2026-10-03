@@ -1,12 +1,20 @@
 # Security
 
-This pre-release research foundation has no supported production version or security SLA.
-Report vulnerabilities privately through GitHub's
+Report vulnerabilities through GitHub's
 [private vulnerability reporting](https://github.com/Starfie1d1272/cs2-c4-damage/security/advisories/new).
-Do not post credentials, proprietary game resources or identifying telemetry in public issues.
+If it is unavailable, open an issue requesting a private contact without disclosing
+exploit details. Include the package version and a minimal synthetic reproduction.
+Do not include credentials, game resources or identifying telemetry.
 
-Treat resource files and telemetry as untrusted inputs. Current field types and GSI-like
-assessment are not runtime validation. No resource parser or server is exposed here.
-Prediction fails closed; arithmetic alone must not be presented as a qualified prediction.
-If private reporting is unavailable, open a public issue requesting a private contact
-without disclosing exploit details or sensitive data.
+Security fixes target the newest beta while the project is in prerelease development.
+There is no formal security-response SLA.
+
+## External inputs
+
+The field parser and GSI decoder validate the data used by the model. Applications
+hosting a GSI endpoint should enforce their own request authentication, payload limits
+and freshness policy. The library provides calculation and decoding APIs, not an HTTP server.
+
+The Node extraction API executes a caller-selected, SHA-256-pinned local decompiler.
+Use a trusted executable and application-controlled paths. The core and GSI entries do
+not launch processes. Keep tokens, real telemetry and game assets outside source control.
