@@ -21,7 +21,9 @@ CI runs these checks on Linux, Windows and macOS with Node.js 22 and 24.
 Keep the core independent of Node, DOM, GSI libraries and downstream applications.
 Use synthetic deterministic fixtures with clear input provenance. Keep real-resource
 experiments in ignored `qualification/`; fixtures and commits must not contain game
-assets, credentials or identifying telemetry.
+source archives, credentials or identifying telemetry. The generated numerical tables
+under `maps/` are the documented distribution exception; regenerate them through the
+[resource workflow](docs/resources.md).
 
 Model changes need scoped evidence and a model revision distinct from package SemVer
 and game build identity. Preserve unknown state and document the assumptions of new

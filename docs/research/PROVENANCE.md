@@ -120,3 +120,16 @@ compiled/text input remains unverified. The new path was exercised on the same p
 Mirage compiled resource; its text and normalized payload hashes match the audit.
 No new binaries, map assets or private records are distributed. See the current
 [model](../model.md) for conditional-result assumptions and remaining native evidence gaps.
+
+## Bundled numerical maps (0.1.0)
+
+The ten bundled tables include Cache and use common-depot manifest
+`2625928478418236338`, build `25687242`, with the existing hash-pinned Source2Viewer-CLI
+`1c43b87e0bda995c0e1f2df8828c64510e3dd6fed32038ea9870aafa9801a5a4`.
+The generated [manifest](../../maps/manifest.json) records each compiled-resource hash,
+normalized-field hash and distributed gzip hash. Every field is self-decompiled,
+round-trip checked, compiled into the model and sampled with invented inputs. Cache has
+93,379 nodes; all ten maps have unique node coordinates. Full VPKs and extracted vdata
+remain in ignored qualification/. The distributed data is limited to numerical damage
+tables and their provenance, separately attributed in NOTICE. This supersedes the prior
+release's no-bundled-map delivery policy; the earlier research evidence is unchanged.

@@ -3,6 +3,7 @@ export default defineConfig({
   entry: {
     index: 'src/index.ts',
     gsi: 'src/gsi/index.ts',
+    maps: 'src/maps/index.ts',
     'node/index': 'src/node/index.ts',
     'node/cli': 'src/node/cli.ts',
   },

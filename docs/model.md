@@ -4,6 +4,15 @@ The active revision is `cs2-win64-2026-10-02-static-v2`, associated with build `
 and the client identity exported as `STATIC_CLIENT_SHA256`. Package SemVer, model revision
 and resource identity are independent; see [resources](resources.md) for the metadata.
 
+## Standing HUD interface
+
+`createStandingC4Predictor(field)` and `createStandingGsiPredictor(field)` select the
+existing `ducked: false` scenario and return a single `damage`, `hpAfter` and `lethal`
+with `status: predicted`, `stance: standing`, model identity and assumptions. This is an
+explicit standing estimate, not a claim that GSI identifies the actual posture.
+`createBundledGsiPredictor()` in `/node` additionally handles installed map loading,
+cache reuse and in-flight reset/map-change invalidation. See [resources](resources.md).
+
 ## Predictors
 
 | API                                    | Purpose                                                      |

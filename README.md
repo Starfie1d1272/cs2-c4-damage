@@ -2,127 +2,104 @@
 
 [简体中文](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/README.zh-CN.md)
 
-Calculate CS2 C4 damage, remaining HP and lethality from baked map damage fields and
-Game State Integration (GSI) snapshots.
-
-- Reusable predictors for GSI updates, with standing and crouched scenarios.
-- Native-style float32 arithmetic, midpoint KD-tree lookup and two-stage sampling.
-- Resource extraction, validation and SHA-256 provenance tracking.
-- Per-stage traces for inspecting and comparing calculations.
-- TypeScript declarations, ESM/CJS exports, a CLI and zero runtime npm dependencies.
+CS2 C4 damage prediction for HUDs and broadcast applications. Includes compact data for
+10 maps, automatic map loading, and a single standing-damage estimate with remaining HP
+and lethality.
 
 ## Install
 
-Requires Node.js 22 or later for the CLI and Node helpers.
-
 ```sh
-npm install cs2-c4-damage@beta
+npm install cs2-c4-damage
 ```
 
-The root library and GSI adapter are pure TypeScript/JavaScript and can also be bundled
-for browser applications. File access and decompiler execution live in `/node`.
+Node.js 22+ is required for automatic resource loading. The core and GSI adapter are pure
+TypeScript/JavaScript, with ESM/CJS exports, types and zero runtime npm dependencies.
 
-## Prepare a map
-
-Use [Source 2 Viewer](https://s2v.app) to extract
-`maps/<map>/baked_bomb_damage.vdata_c` from your local CS2 map VPK. Keep the field paired
-with the game build it came from. Game resources are supplied by your application.
-
-The CLI can run your local Source2Viewer-CLI and normalize its output:
-
-```sh
-npx cs2-c4-damage extract \
-  --compiled /your/resources/baked_bomb_damage.vdata_c \
-  --decompiler /your/tools/Source2Viewer-CLI \
-  --decompiler-sha256 <sha256-of-the-executable> \
-  --map de_mirage --build-id 25687242 \
-  --out /your/resources/mirage.json
-
-npx cs2-c4-damage inspect /your/resources/mirage.json
-```
-
-Use `sha256sum`, `shasum -a 256`, or PowerShell `Get-FileHash -Algorithm SHA256` to
-compute the executable hash. You can also pass `--client-sha256` to record the matching
-client binary identity. If you already have decompiled text, use `--vdata <text-file>`
-instead of the two `--decompiler` options.
-
-See the [resource guide](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/resources.md)
-for build identities, extraction options and updating maps.
-
-## Predict from GSI
-
-Load the field and create the predictor once, then reuse it for incoming snapshots:
+## Quick start
 
 ```ts
-import { readNormalizedField } from 'cs2-c4-damage/node';
-import { createGsiC4Predictor, decodeGsiSnapshot } from 'cs2-c4-damage/gsi';
+import { createBundledGsiPredictor } from 'cs2-c4-damage/node';
+import { decodeGsiSnapshot } from 'cs2-c4-damage/gsi';
 
-const field = await readNormalizedField('/your/resources/mirage.json');
-const predict = createGsiC4Predictor(field);
+const c4 = createBundledGsiPredictor();
 
-export function handleGsi(payload: unknown, steamId?: string) {
-  // steamId selects allplayers[steamId]; omit it to select player.
-  const result = predict(decodeGsiSnapshot(payload, steamId));
-  if (result.status === 'conditional') {
-    console.log(result.damage); // { min, max } across the evaluated scenarios
+export async function handleGsi(payload: unknown, steamId?: string) {
+  const result = await c4.predict(decodeGsiSnapshot(payload, steamId));
+  if (result.status === 'predicted') {
+    console.log(result.damage); // one standing-damage value for the HUD
     console.log(result.hpAfter, result.lethal);
-    console.log(result.scenarios); // individual posture, damage and sampling trace
   }
-  return result;
+  return result; // hide the prediction when status is 'unavailable'
+}
+
+// On round end, disconnect or source restart:
+export function resetC4() {
+  c4.reset();
 }
 ```
 
-Enable the GSI data needed for bomb position, player position, forward and health.
-Field availability depends on your GSI configuration and viewing mode. The adapter
-accepts coordinate strings or numeric triples, handles planted/defusing bombs, and
-checks the map name when supplied. Your application owns the GSI HTTP receiver.
+`steamId` selects `allplayers[steamId]`; omit it to use `player`. Supply GSI map name,
+planted/defusing bomb position, player position, forward and health. Your application
+owns the GSI receiver and HUD display. A short tooltip such as “Standing estimate” is
+sufficient to identify the displayed value.
 
-| Result        | Meaning                                                                                                                         |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `conditional` | Damage and HP ranges across the listed scenarios, plus `lethal`, `assumptions` and `unknownInputs`.                             |
-| `unavailable` | A required input is missing/invalid, the resource identity is unsupported, or the field query cannot resolve. Inspect `reason`. |
+The service selects the map, loads its bundled field and reuses the compiled predictor
+on subsequent updates. It caches up to two maps by default, drops stale in-flight results
+on map changes/reset, and returns `unavailable` for missing inputs or unsupported maps.
+No local CS2 installation, extraction tool, manual resource download or network request
+is needed at runtime.
 
-`lethal` is `true`, `false` or `'indeterminate'` across those scenarios. For a decoded
-snapshot, call the prepared predictor directly. The one-shot alternative is
-`predictC4OutcomeFromGsi(field, snapshot)`.
+## Included maps
 
-## Direct inputs and sampling
+Ancient, Anubis, **Cache**, Dust II, Inferno, Mirage, Nuke, Overpass, Train and Vertigo.
+Canonical names such as `de_cache` and short names such as `cache` are accepted by the
+bundled loader. Compressed numerical tables total about 9.4 MiB and ship with the package.
+Each map is loaded on demand; importing the core does not load map files.
 
-Use the root API when your application already has player and bomb state:
+The package pairs its map data with its model revision internally. Updates to bundled
+resources are delivered through library releases. The
+[resource guide](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/resources.md)
+documents the manifest and maintainer regeneration process.
+
+## Separate resource loading and calculation
+
+For applications with a Companion/Core split, load the field on the Node side and create
+the predictor in the calculation owner:
 
 ```ts
-import { createC4Predictor } from 'cs2-c4-damage';
+import { loadBundledMap } from 'cs2-c4-damage/node';
+import { createStandingGsiPredictor } from 'cs2-c4-damage/gsi';
 
-const predict = createC4Predictor(field);
-const result = predict({
-  bombPosition: { x: 100, y: 200, z: 0 },
-  playerPosition: { x: 150, y: 250, z: 0 },
-  playerForward: { x: 1, y: 0, z: 0 },
-  health: 100,
-  ducked: undefined, // evaluate both postures; pass true/false when known
-});
+const field = await loadBundledMap('de_cache');
+const predict = createStandingGsiPredictor(field);
+// Reuse for each player's decoded snapshot; recreate when changing maps.
+const result = predict(snapshot);
 ```
 
-Optional `nativeState` supplies the collision bounds/transform and a ground result or
-collision-query provider. `runStaticSampling` exposes the first lookup, second lookup,
-selected stage and corrected damage. See the
-[model and API guide](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/model.md).
+`createStandingC4Predictor(field)` from the root entry accepts direct bomb/player
+positions, forward and health. These standing APIs return:
 
-## CLI
+| Status        | Fields                                                                                               |
+| ------------- | ---------------------------------------------------------------------------------------------------- |
+| `predicted`   | Numeric `damage`, `hpAfter`, boolean `lethal`, `stance: 'standing'`, model identity and assumptions. |
+| `unavailable` | `reason`; the HUD can hide the value.                                                                |
 
-```sh
-npx cs2-c4-damage predict /your/resources/mirage.json \
-  --bomb-position 100,200,0 --player-position 150,250,0 \
-  --forward 1,0,0 --health 100 --ducked unknown
+The existing `createC4Predictor` and `createGsiC4Predictor` APIs remain available for
+multi-scenario calculations. Advanced callers can provide native sampling/collision
+state or inspect stage traces; see the
+[model/API guide](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/model.md).
 
-npx cs2-c4-damage compare-traces expected.json actual.json
-npx cs2-c4-damage qualify vectors.json /your/resources/mirage.json
-```
+## Data and tooling
 
-`predict` prints JSON. `compare-traces` compares sampling stages and reports differing
-paths. `qualify` checks versioned reference vectors and their resource identities.
+`cs2-c4-damage/maps` exports `bundledMapManifest`, `packMapField` and `unpackMapField` for
+resource-aware applications. `loadBundledMap` checks the compressed file hash, metadata
+and normalized field identity before returning it.
 
-## Development and documentation
+The CLI retains `extract`, `inspect`, `predict`, `compare-traces` and `qualify` for custom
+resources and research. Extraction is a maintainer/advanced workflow; ordinary HUD
+integration uses the included maps.
+
+## Development
 
 ```sh
 pnpm install --frozen-lockfile
@@ -133,18 +110,17 @@ pnpm build
 pnpm test:package
 ```
 
-- [Documentation index](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/README.md)
-- [Architecture](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/architecture.md)
-- [Changelog](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CHANGELOG.md)
-- [Contributing](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CONTRIBUTING.md) · [Releasing](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/releasing.md)
+[Documentation](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/README.md) ·
+[Changelog](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CHANGELOG.md) ·
+[Contributing](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CONTRIBUTING.md) ·
+[Releasing](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/releasing.md)
 
-New code is Apache-2.0. Original research is credited to
-[unicbm](https://github.com/unicbm) and retains its own copyright;
-see [credits](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CREDITS.md).
+Authored code is Apache-2.0. Original research is credited to [unicbm](https://github.com/unicbm).
+Bundled numerical map tables are derived from CS2; rights in source game materials remain
+with their owners. See [credits](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CREDITS.md)
+and [NOTICE](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/NOTICE).
 
 ## Accuracy
 
-Results use model `cs2-win64-2026-10-02-static-v2` and matching map resources. GSI omits
-some posture and collision state, so ground resampling, dynamic obstacles or unusual
-transforms can prevent exact simulation. Reported ranges cover the listed scenarios,
-not every missing state; full native parity has not yet been validated in live captures.
+The HUD value is a standing estimate. Missing collision/posture state and game updates can
+cause differences from actual damage; the model does not promise exact live-game simulation.

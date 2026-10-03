@@ -6,6 +6,18 @@ and resource provenance. Field parsing/spatial code is under `src/field`, calcul
 under `src/engine`, decoded/wire-input adaptation under `src/gsi`, and filesystem/process
 operations exclusively under `src/node`. The core never loads DLLs or runs their code.
 
+## Map delivery and HUD entry
+
+`maps/` contains the compact numerical tables and manifest. `src/maps` provides the
+pure codec/catalog entry; `src/node/maps.ts` owns installed-file loading, decompression,
+integrity checks and the bounded prepared-predictor cache. No source VPK/DLL/vdata is
+needed at runtime. `scripts/build-maps.mjs` regenerates the tables from private sources.
+
+The standing facade selects the existing standing scenario without a second algorithm.
+The auto-map service returns one value per player and invalidates in-flight work on a
+map change or explicit reset. Hosts clear their displayed values on unavailable input
+and call reset on round/source transitions. The low-level multi-scenario API is unchanged.
+
 ## Model construction and calls
 
 `createStaticFieldSampler` validates and snapshots the field, builds the native-style
@@ -57,8 +69,9 @@ accept conditional or model-unavailable predictions. Native-instruction probes u
 `scripts/research` are development tools only; real binaries/resources stay ignored.
 The fixtures contain only deterministic synthetic inputs and their calculated outputs.
 
-Root, `/gsi` and `/node` provide ESM/CJS and declarations. Only `/node` uses Node APIs
+Root, `/gsi`, `/maps` and `/node` provide ESM/CJS and declarations. Only `/node` uses Node APIs
 or launches a caller-selected decompiler. Package allowlisting excludes research tools,
-fixtures, all game assets and telemetry. The package has zero runtime npm dependencies.
+fixtures, source game archives and telemetry. The explicitly bundled compact numerical
+map tables are packaged separately from code. The package has zero runtime npm dependencies.
 GitHub Actions verifies the package across platforms and publishes tagged releases through
 the [npm workflow](releasing.md).

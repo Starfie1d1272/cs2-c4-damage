@@ -11,6 +11,10 @@ Apache-2.0 license. Original research text is excluded from npm packaging.
 
 Source 2 Viewer / ValveResourceFormat is acknowledged as public resource-format
 prior art: https://s2v.app and https://github.com/ValveResourceFormat/ValveResourceFormat
-No upstream implementation code or Valve game assets are included.
+No upstream implementation code, DLLs, VPKs, textures, meshes, sounds or vdata binaries
+are included. The maps/ directory contains compact numerical C4 damage tables derived
+from CS2 resources. Rights in source game materials remain with Valve and the respective
+owners; the Apache-2.0 license applies to this project's authored code. Resource and
+extraction identities are recorded in maps/manifest.json.
 
 No endorsement by Valve, Counter-Strike or Steam is claimed.

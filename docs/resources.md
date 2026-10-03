@@ -1,67 +1,84 @@
-# Map resources
+# Bundled map resources
 
-A predictor consumes a normalized `BombDamageField`: bombsite bounds and powers,
-sample-node positions, packed damage records, and source metadata. Construct it once
-per map/resource revision and reuse it across player updates.
+Version 0.1.0 includes compact numerical damage tables for Ancient, Anubis, Cache, Dust II,
+Inferno, Mirage, Nuke, Overpass, Train and Vertigo. They total 9,824,511 compressed bytes
+(about 9.4 MiB). Runtime users install the npm package and select a map; no extraction,
+Steam login, local CS2 installation or external resource download is required.
 
-## Extract and normalize
+## Loading
 
-1. Open your local map VPK with [Source 2 Viewer](https://s2v.app).
-2. Extract `maps/<map>/baked_bomb_damage.vdata_c`.
-3. Obtain the Source2Viewer-CLI for your platform and calculate its executable SHA-256.
-4. Run `cs2-c4-damage extract` as shown in the README, with the map and matching build ID.
-5. Use `inspect` to check the metadata and node/record counts before loading the field.
+```ts
+import { loadBundledMap, createBundledGsiPredictor } from 'cs2-c4-damage/node';
+import { bundledMapManifest } from 'cs2-c4-damage/maps';
 
-The self-decompile path copies the compiled resource into a temporary directory,
-executes the selected tool, reads its text output, verifies input/tool stability and
-records `self-decompiled-source-pair`. The metadata includes the compiled resource,
-decompiled text, canonical field and executable hashes. Node applications can call
-`extractFieldFromCompiled` directly.
-
-For text you have already exported:
-
-```sh
-npx cs2-c4-damage extract \
-  --vdata /your/resources/baked_bomb_damage.txt \
-  --compiled /your/resources/baked_bomb_damage.vdata_c \
-  --map de_mirage --build-id 25687242 \
-  --out /your/resources/mirage.json
+const field = await loadBundledMap('de_cache');
+const c4 = createBundledGsiPredictor();
+// c4.predict(decodedSnapshot) automatically selects decodedSnapshot.mapName.
 ```
 
-This records independent hashes with `unverified-source-pair`. Additional options are
-`--client-sha256`, `--extractor`, `--extractor-revision` and `--model-revision`.
+`loadBundledMap` accepts canonical names or short aliases. It reads assets relative to
+the installed package, validates SHA-256 and source identities, and returns a normalized
+field. For applications that copy/bundle Node output into a portable distribution,
+include the package's `maps/` directory alongside `dist/`, preserving that layout.
+The normal npm install layout works in both ESM and CJS.
 
-## Version identities
+`createBundledGsiPredictor` owns a bounded cache (default two maps; `maxCachedMaps: 1..10`),
+reuses compiled predictors, and returns one standing estimate. Map changes and `reset()`
+invalidate in-flight results. Call `reset()` on round end, disconnect or source changes;
+no previous prediction is retained as a fallback. A supplied `loadMap` callback can
+replace the bundled loader when the host manages its own resources.
 
-| Identity                | Current value / purpose                                                |
-| ----------------------- | ---------------------------------------------------------------------- |
-| npm package version     | Library API and distribution version; see `package.json`.              |
-| `modelRevision`         | `cs2-win64-2026-10-02-static-v2`: calculation and traversal semantics. |
-| `sourceBuildId`         | Supported static profile: `25687242`.                                  |
-| `sourceClientSha256`    | `d7db25d48f1d10c5e0b0296e20ed803426eb9509da41760daeda39dd35ba89b9`.    |
-| `formatVersion`         | Normalized JSON schema version `1`.                                    |
-| `sourceResourceVersion` | Source 2 resource version `1` or `2`.                                  |
+The pure core accepts fields independently of Node. A Companion can call `loadBundledMap`
+and pass the field to Core, which owns `createStandingGsiPredictor` and the resulting
+per-player numbers. Do not send the complete field with every HUD frame.
 
-The parser defaults to the current model revision. Existing JSON keeps its recorded
-revision. A known conflicting client/build is rejected; missing identities appear in
-`unknownInputs`. Re-extract matching resources when updating a field, rather than
-changing its identity labels. New game builds may require a new model profile.
+## Manifest and encoding
 
-The v2 sampler validates finite coordinates, record layout and unique node positions.
-Duplicate-coordinate fields are currently rejected. The verified Mirage resource has
-68,279 unique nodes and two bombsites; other maps must supply their own matching fields.
+`maps/manifest.json` and the `/maps` export describe the same generated catalog:
 
-## Loading and updating
+- Data revision `cs2-25687242-v1`, model `cs2-win64-2026-10-02-static-v2`.
+- Source build `25687242`, app `730`, depot `2347770`, manifest `2625928478418236338`.
+- Client SHA-256 `d7db25d48f1d10c5e0b0296e20ed803426eb9509da41760daeda39dd35ba89b9`.
+- Per-map compressed file hash/size, source and normalized hashes, node/site counts.
 
-`readNormalizedField(path)` validates JSON in Node. Browser applications can fetch JSON,
-validate it with `validateField`, then pass it to `createGsiC4Predictor` or
-`createC4Predictor`. Both constructors snapshot the field and compile its tree.
-Replace the predictor when the map or resource changes. See the exported TypeScript
-types for metadata and validation results.
+Each gzip file contains the `c4-map-v1` representation: metadata and flat numerical
+arrays for sites (min xyz, max xyz, power), positions (xyz) and records (phase, yaw,
+pitch). `packMapField` and `unpackMapField` preserve record order and coordinate values.
+The format contains no textures, meshes, sounds, DLLs, VPKs or vdata binaries.
 
-## Resource handling
+Package SemVer, data revision and model revision remain separate. The library distributes
+matched resources; users do not manually pair versions. Resource/model updates ship in
+subsequent package versions as CS2 changes. Unsupported maps return `unavailable`.
 
-Game binaries, VPKs, vdata and real telemetry remain outside the npm package and repository.
-For local development, use ignored `qualification/`. Only run a decompiler executable
-you trust; its hash identifies the selected tool. Source-pair metadata records lineage
-of that extraction, while game-build matching is established by the supplied identities.
+## Maintainer regeneration
+
+Source archives stay in ignored `qualification/`. Obtain the ten matching map VPKs and
+a local Source2Viewer-CLI; pin its executable hash. Then run:
+
+```sh
+pnpm build
+pnpm build:maps --vpk-dir qualification/current-common/game/csgo/maps \
+  --decompiler /path/to/Source2Viewer-CLI \
+  --decompiler-sha256 <sha256> --work-dir qualification/bundled-fields
+pnpm exec prettier --write src/maps/catalog.ts maps/manifest.json
+pnpm build
+pnpm test:package
+```
+
+The generator extracts only each map's baked damage field, runs the pinned decompiler,
+records source pairs, validates compact round trips against canonical hashes, compiles
+each tree and queries each site's field. It writes `maps/*.json.gz`, the manifest and
+its TypeScript catalog. All ten source fields have unique node coordinates.
+The installed-package check loads every map and runs invented standing snapshots; unit
+tests use synthetic fields. These are resource/integration checks, not live telemetry.
+
+Custom extraction remains available through `extractFieldFromCompiled`, `extractField`
+and the CLI `extract` command. A source format version is independent of package SemVer.
+Existing normalized JSON keeps its recorded model revision.
+
+## Attribution
+
+Authored code is Apache-2.0. Numerical map tables derive from CS2 game resources; source
+material rights remain with Valve and the respective owners. Full source archives and
+original game resources are not redistributed. See [NOTICE](../NOTICE) and
+[provenance](research/PROVENANCE.md) for the resource identities and tool attribution.

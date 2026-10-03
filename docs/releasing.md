@@ -2,7 +2,8 @@
 
 The repository uses GitHub Actions for CI/CD. `ci.yml` tests Linux, Windows and macOS
 on Node.js 22/24. `publish.yml` builds, checks and publishes a tagged version to npm.
-The initial release version is `0.1.0-beta.1`, distributed under the npm `beta` tag.
+Version `0.1.0` is the first regular release, distributed under `latest`; the original
+`0.1.0-beta.1` remains available under `beta`.
 
 ## npm authorization
 
@@ -80,6 +81,6 @@ version are separate states; the Actions run records whether npm publication suc
 ## Package contents
 
 The allowlist includes compiled exports/declarations, README translations, changelog,
-license and credits. Research documents, development fixtures, game assets and telemetry
-stay outside the tarball. Library SemVer, model revision and source-build identity are
+license, credits and compact numerical map tables with their manifest. Research documents,
+development fixtures, source game archives and telemetry stay outside the tarball. Library SemVer, model revision and source-build identity are
 maintained independently.
