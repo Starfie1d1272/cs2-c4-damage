@@ -4,40 +4,44 @@ The repository uses GitHub Actions for CI/CD. `ci.yml` tests Linux, Windows and 
 on Node.js 22/24. `publish.yml` builds, checks and publishes a tagged version to npm.
 The initial release version is `0.1.0-beta.1`, distributed under the npm `beta` tag.
 
-## One-time npm setup
+## npm authorization
 
-GitHub access and npm package ownership are separate. The publishing workflow supports
-[npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers) with GitHub OIDC;
-once configured, no long-lived npm token is needed.
+`0.1.0-beta.1` was published on 2026-10-03 through interactive npm browser authorization.
+Its registry integrity matches the tested tarball, and the installed registry package
+passed the ESM/CJS/CLI checks. This initial publication has no GitHub provenance attestation.
 
-For a package that has not yet been created on npm, first establish ownership with an
-authenticated publish. Choose one bootstrap route:
+The GitHub trusted publisher is configured for subsequent releases:
 
-1. **GitHub Actions:** create a short-lived granular npm token able to publish this new
-   package (with bypass 2FA enabled for automated publishing), then add it as the
-   `NPM_TOKEN` secret in the repository's `npm` environment or repository Actions secrets.
-   Never commit or paste the token into issues, documentation or chat. Publish the GitHub
-   prerelease as described below. Delete/revoke the bootstrap token after OIDC is configured.
-2. **Local login:** on your own machine, check out the release tag, run the full checks,
-   `npm login`, then `npm publish --access public --tag beta`. Complete npm's browser/2FA
-   prompts. This establishes the first version without CI provenance; subsequent versions
-   can use OIDC. Do not rerun the workflow for that already-published version.
+| Field                | Value                                                     |
+| -------------------- | --------------------------------------------------------- |
+| Provider             | GitHub Actions                                            |
+| Organization or user | `Starfie1d1272`                                           |
+| Repository           | `cs2-c4-damage`                                           |
+| Workflow filename    | `publish.yml`                                             |
+| Environment name     | `npm`                                                     |
+| Allowed action       | Direct `npm publish` (npm also permits staged publishing) |
 
-After the package exists, open its npm **Settings → Trusted Publisher** and configure:
+No `NPM_TOKEN` secret is needed. The workflow uses a GitHub-hosted runner, Node.js 24,
+`id-token: write` and [npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers).
+The configured publisher is ready for the next version; a subsequent automated
+publication will exercise the full OIDC path and record GitHub provenance. Do not rerun
+publication of the existing beta version.
 
-| Field                | Value                       |
-| -------------------- | --------------------------- |
-| Provider             | GitHub Actions              |
-| Organization or user | `Starfie1d1272`             |
-| Repository           | `cs2-c4-damage`             |
-| Workflow filename    | `publish.yml`               |
-| Environment name     | `npm`                       |
-| Allowed action       | Enable direct `npm publish` |
+### Reconfiguring a publisher
 
-The workflow uses a GitHub-hosted runner, Node.js 24 and `id-token: write`. npm requires
-CLI 11.5.1+ for this flow; the Node.js 24 runner provides a compatible CLI. npm records
-provenance for GitHub publications. Enabling GitHub environment reviewers is optional;
-if configured, the maintainer approves the deployment in Actions.
+An npm package owner can manage the binding in **Settings → Trusted Publisher** on
+npmjs.com. With npm 11.15.0 or later, the equivalent command is:
+
+```sh
+npm trust github cs2-c4-damage \
+  --repo Starfie1d1272/cs2-c4-damage \
+  --file publish.yml --environment npm --allow-publish
+```
+
+This is a setup command, not part of normal releases. npm requests browser/2FA approval
+for trust changes. Account-level 2FA is required. The package must already exist; for a
+new package, an initial `npm login` and authenticated `npm publish` establish ownership.
+A normal release uses the existing trusted publisher without repeating those steps.
 
 ## Prepare a version
 

@@ -5,7 +5,7 @@ identities are recorded separately in resource metadata.
 
 ## 0.1.0-beta.1
 
-Initial npm prerelease, prepared for publication.
+Published to npm on 2026-10-03 under the `beta` tag.
 
 ### Added
 
