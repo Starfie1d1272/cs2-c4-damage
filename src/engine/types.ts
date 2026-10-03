@@ -6,6 +6,7 @@ export interface NumericRange {
 }
 
 export type C4Outcome =
+  | import('./conditional.js').ConditionalOutcome
   | {
       readonly status: 'exact';
       readonly damage: number;
@@ -29,4 +30,11 @@ export interface PredictC4Input {
   /** undefined means unknown, never standing. */
   readonly ducked: boolean | undefined;
   readonly health: number;
+  /** Optional independently supplied native state; GSI alone does not establish it. */
+  readonly nativeState?: {
+    readonly sample: import('./sampling.js').NativeSampleState;
+    readonly resampling:
+      | import('./sampling.js').ResamplingState
+      | import('./sampling.js').CollisionContext;
+  };
 }

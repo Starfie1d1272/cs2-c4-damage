@@ -1,7 +1,10 @@
 # Native query closure
 
-This document records the static closure pass for the current public CS2 build. It
-is an implementation boundary, not a native-parity claim. No Windows game process,
+This document records the historical static pass for build `25218825`. The
+[2026-10-03 audit](static-audit-2026-10-03.zh-CN.md) adds independently hash-bound
+sample/ground/control-flow evidence and identifies a `/255` direction decoder in
+newer DLLs. Do not apply the addresses or unresolved conclusions below universally.
+This historical pass is an implementation boundary, not a native-parity claim. No Windows game process,
 injection, hook, RVA lookup or native query was run by this package.
 
 ## Evidence identity
@@ -154,7 +157,7 @@ capture.
 
 `predictC4Outcome` remains unavailable for valid inputs because the native sample,
 collision correction and second-sample selection are not externally reconstructable.
-This is intentional fail-closed behavior. The only remaining action that requires
-Windows/live CS2 is one matched-build differential capture with final vectors and
-trace instrumentation to resolve and qualify that complete native path; no static
-document or field parse is a substitute for it.
+This is intentional fail-closed behavior. Further static disassembly does not need
+Windows. A complete portable model, collision/state inputs and matched-build runtime
+capture with stage traces and applied damage are still needed; no static document,
+synthetic callee replay or field parse is a substitute for that qualification.

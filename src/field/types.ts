@@ -5,8 +5,9 @@ export interface Vec3 {
   readonly z: number;
 }
 
-/** The current extractor does not prove that a decompiled text file came from the compiled resource. */
-export type SourcePairStatus = 'unverified-source-pair';
+/** Source lineage only: neither status establishes native model qualification. */
+export type SourcePairStatus =
+  'unverified-source-pair' | 'self-decompiled-source-pair';
 
 /** Library SemVer is intentionally absent: it does not identify gameplay data. */
 export interface FieldMetadata {
@@ -26,6 +27,7 @@ export interface FieldMetadata {
   readonly extraction: {
     readonly tool: string;
     readonly revision: string;
+    readonly executableSha256?: string;
   };
 }
 

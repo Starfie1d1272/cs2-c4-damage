@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import {
   evaluateBakedFieldCorrection,
+  compareSamplingTraces,
   parseQualificationVectors,
   predictC4Outcome,
   qualifyVectors,
@@ -11,6 +12,7 @@ import {
 import type { Vec3 } from '../index.js';
 import {
   extractField,
+  extractFieldFromCompiled,
   readNormalizedField,
   summarizeField,
   writeNormalizedField,
@@ -22,7 +24,7 @@ function print(value: unknown): void {
 
 function usage(): void {
   process.stdout.write(
-    `cs2-c4-damage\n\nCommands:\n  extract --vdata <file> --compiled <file> --map <map> [--out <file>] [--build-id <id>]\n  inspect <normalized-field>\n  predict <normalized-field> --bomb-position x,y,z --player-position x,y,z --forward x,y,z --health n --ducked true|false|unknown [--sample-position x,y,z]\n  qualify <vectors.json> <normalized-field>\n`,
+    `cs2-c4-damage\n\nCommands:\n  extract (--vdata <file> | --decompiler <executable> --decompiler-sha256 <hash>) --compiled <file> --map <map> [--out <file>] [--build-id <id>]\n  inspect <normalized-field>\n  predict <normalized-field> --bomb-position x,y,z --player-position x,y,z --forward x,y,z --health n --ducked true|false|unknown [--sample-position x,y,z]\n  qualify <vectors.json> <normalized-field>\n  compare-traces <expected.json> <actual.json>\n`,
   );
 }
 
@@ -62,8 +64,7 @@ async function runExtract(args: readonly string[]): Promise<number> {
   const extractorRevision = optionalOption(args, '--extractor-revision');
   const modelRevision = optionalOption(args, '--model-revision');
   const sourceClientSha256 = optionalOption(args, '--client-sha256');
-  const field = await extractField({
-    vdataPath: requiredOption(args, '--vdata'),
+  const common = {
     compiledPath: requiredOption(args, '--compiled'),
     mapName: requiredOption(args, '--map'),
     sourceBuildId: optionalOption(args, '--build-id') ?? null,
@@ -71,7 +72,18 @@ async function runExtract(args: readonly string[]): Promise<number> {
     ...(extractor === undefined ? {} : { extractor }),
     ...(extractorRevision === undefined ? {} : { extractorRevision }),
     ...(modelRevision === undefined ? {} : { modelRevision }),
-  });
+  };
+  const decompiler = optionalOption(args, '--decompiler');
+  const field = decompiler
+    ? await extractFieldFromCompiled({
+        ...common,
+        decompilerPath: decompiler,
+        decompilerSha256: requiredOption(args, '--decompiler-sha256'),
+      })
+    : await extractField({
+        ...common,
+        vdataPath: requiredOption(args, '--vdata'),
+      });
   const outputPath = optionalOption(args, '--out');
   if (outputPath) {
     await writeNormalizedField(outputPath, field);
@@ -135,6 +147,14 @@ export async function runCli(
     return 0;
   }
   const commandArgs = args.slice(1);
+  if (command === 'compare-traces') {
+    const result = compareSamplingTraces(
+      JSON.parse(await readFile(commandArgs[0] ?? '', 'utf8')),
+      JSON.parse(await readFile(commandArgs[1] ?? '', 'utf8')),
+    );
+    print(result);
+    return result.status === 'matched' ? 0 : 1;
+  }
   if (command === 'extract') return runExtract(commandArgs);
   if (command === 'inspect') {
     const field = await readNormalizedField(commandArgs[0] ?? '');

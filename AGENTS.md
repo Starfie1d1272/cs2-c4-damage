@@ -6,7 +6,7 @@
 - Do not commit private conversations, avatars, Valve binaries/VPK/vdata assets or real telemetry.
 - New code is Apache-2.0; do not copy incompatible or unknown-license source.
 - Keep core pure and free of Node, DOM, RivalHub and GSI-library dependencies.
-- Unknown is not zero or standing. Prediction stays unavailable until evidence qualifies all relevant semantics.
+- Unknown is not zero or standing. Keep exact/native-parity output gated on qualification. Explicitly labeled conditional static-model scenarios may be returned before live capture; their extrema are not bounds over missing states.
 - Library SemVer, model revision and CS2 resource/build identity are separate.
 - Use synthetic deterministic fixtures. Real-asset work stays in ignored qualification/.
 - Run pnpm lint, pnpm typecheck, pnpm test, pnpm build and pnpm test:package before delivery.

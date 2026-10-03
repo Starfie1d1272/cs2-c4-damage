@@ -72,3 +72,47 @@ export type {
   QualificationTrace,
   QualificationVectors,
 } from './qualification/index.js';
+
+export {
+  STATIC_MODEL_REVISION,
+  STATIC_CLIENT_SHA256,
+  STATIC_BUILD_ID,
+  LEGACY_MODEL_REVISION,
+} from './model-profile.js';
+export { createNativeTree } from './field/native-tree.js';
+export {
+  staticRawDamage,
+  staticScaleDamage,
+  staticBlastDirection,
+  staticPlayerDamage,
+} from './engine/static-math.js';
+export { createStaticFieldSampler } from './engine/static-field.js';
+export type {
+  StaticFieldSampler,
+  StaticFieldResult,
+  StaticFieldHit,
+} from './engine/static-field.js';
+export {
+  nativeSamplePosition,
+  resolveResampling,
+  runStaticSampling,
+} from './engine/sampling.js';
+export type {
+  NativeSampleState,
+  ResamplingState,
+  CollisionContext,
+  CollisionRequest,
+  CollisionResult,
+  SamplingTrace,
+  SamplingInput,
+} from './engine/sampling.js';
+export {
+  createC4Predictor,
+  predictStaticC4Outcome,
+} from './engine/conditional.js';
+export type {
+  ConditionalOutcome,
+  ConditionalScenario,
+} from './engine/conditional.js';
+export { compareSamplingTraces } from './qualification/stages.js';
+export type { StageComparison } from './qualification/stages.js';
