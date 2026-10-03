@@ -1,3 +1,7 @@
+import {
+  createStandingC4Predictor,
+  type StandingC4Outcome,
+} from '../engine/standing.js';
 import { createC4Predictor } from '../engine/conditional.js';
 import type { Vec3 } from '../field/types.js';
 import type { BombDamageField } from '../field/types.js';
@@ -154,6 +158,26 @@ export function createGsiC4Predictor(
       playerForward: snapshot.playerForward!,
       health: snapshot.health!,
       ducked: undefined,
+    });
+  };
+}
+
+/** HUD-friendly single standing estimate; the existing multi-scenario API is unchanged. */
+export function createStandingGsiPredictor(
+  field: BombDamageField,
+): (snapshot: GsiSnapshot) => StandingC4Outcome {
+  const predict = createStandingC4Predictor(field);
+  const mapName = field.metadata.mapName;
+  return (snapshot) => {
+    if (snapshot.mapName !== undefined && snapshot.mapName !== mapName)
+      return { status: 'unavailable', reason: 'gsi-map-resource-mismatch' };
+    if (!assessGsiSnapshot(snapshot).valid)
+      return { status: 'unavailable', reason: 'gsi-missing-or-invalid-input' };
+    return predict({
+      bombPosition: snapshot.bombPosition!,
+      playerPosition: snapshot.playerPosition!,
+      playerForward: snapshot.playerForward!,
+      health: snapshot.health!,
     });
   };
 }

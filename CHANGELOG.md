@@ -3,6 +3,14 @@
 Package versions describe the public library API. Model revisions and CS2 build
 identities are recorded separately in resource metadata.
 
+## 0.1.0
+
+- Bundle compact data for 10 maps, including Cache, with a versioned manifest and automatic loading.
+- Add `createStandingC4Predictor` and `createStandingGsiPredictor` for a single HUD damage value.
+- Add `createBundledGsiPredictor` with automatic map selection, bounded caching and reset handling.
+- Add lossless map-table packing and reproducible batch resource generation.
+- Keep the existing multi-scenario APIs available; ordinary HUD integration needs no manual resources.
+
 ## 0.1.0-beta.1
 
 Published to npm on 2026-10-03 under the `beta` tag.

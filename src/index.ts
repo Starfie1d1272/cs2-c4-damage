@@ -116,3 +116,5 @@ export type {
 } from './engine/conditional.js';
 export { compareSamplingTraces } from './qualification/stages.js';
 export type { StageComparison } from './qualification/stages.js';
+export { createStandingC4Predictor } from './engine/standing.js';
+export type { StandingC4Input, StandingC4Outcome } from './engine/standing.js';

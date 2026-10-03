@@ -53,7 +53,7 @@ try {
   assert.ok(entries.includes('package/CHANGELOG.md'));
   assert.ok(
     entries.every((entry) =>
-      /^package\/(?:dist\/|package\.json$|README(?:\.zh-CN)?\.md$|CHANGELOG\.md$|LICENSE$|NOTICE$|CREDITS\.md$)/.test(
+      /^package\/(?:dist\/|maps\/(?:manifest\.json|de_[a-z0-9]+\.json\.gz)$|package\.json$|README(?:\.zh-CN)?\.md$|CHANGELOG\.md$|LICENSE$|NOTICE$|CREDITS\.md$)/.test(
         entry,
       ),
     ),
@@ -136,6 +136,29 @@ try {
     ],
     { cwd: temp },
   );
+  const mapSmoke = join(temp, 'maps.mjs');
+  await writeFile(
+    mapSmoke,
+    `
+    import { bundledMapManifest } from 'cs2-c4-damage/maps';
+    import { loadBundledMap, createBundledGsiPredictor } from 'cs2-c4-damage/node';
+    import { createRequire } from 'node:module';
+    const cjs=createRequire(import.meta.url)('cs2-c4-damage/node');
+    if(bundledMapManifest.maps.length!==10 || !bundledMapManifest.maps.some(m=>m.mapName==='de_cache')) throw new Error('incomplete maps');
+    const service=createBundledGsiPredictor();
+    for(const entry of bundledMapManifest.maps) {
+      const field=await loadBundledMap(entry.mapName);
+      const site=field.bombsites[0];
+      const bomb={x:(site.boundsMin.x+site.boundsMax.x)/2,y:(site.boundsMin.y+site.boundsMax.y)/2,z:(site.boundsMin.z+site.boundsMax.z)/2};
+      const result=await service.predict({mapName:entry.mapName,bombPosition:bomb,playerPosition:field.positions[0],playerForward:{x:1,y:0,z:0},health:100});
+      if(result.status!=='predicted' || !Number.isInteger(result.damage) || result.stance!=='standing')throw new Error('bundled standing prediction failed: '+entry.mapName);
+    }
+    const cached=await cjs.loadBundledMap('cache');
+    if(cached.metadata.mapName!=='de_cache')throw new Error('CJS resource resolution failed');
+    if((await service.predict({mapName:'de_missing'})).status!=='unavailable')throw new Error('unsupported map handling failed');
+  `,
+  );
+  await execFileAsync(execPath, [mapSmoke], { cwd: temp });
   const cli = await execFileAsync(
     'pnpm',
     ['exec', 'cs2-c4-damage', 'inspect', 'field.json'],

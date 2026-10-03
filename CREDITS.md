@@ -11,7 +11,9 @@ and [provenance](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/r
 [Source 2 Viewer](https://s2v.app) /
 [ValveResourceFormat](https://github.com/ValveResourceFormat/ValveResourceFormat)
 contributors provide public Source 2 resource-format research and extraction tooling.
-Their inspected implementation is MIT licensed; no code or assets were copied here.
+Their inspected implementation is MIT licensed; no implementation code was copied here.
+Bundled numerical map tables are generated from CS2 resources with that extraction tool;
+see NOTICE and the resource manifest for attribution and source identities.
 
 cs2-c4-damage contributors author the external library/API, GSI uncertainty model,
 tests and project documentation. New code is Apache-2.0. These credits do not imply

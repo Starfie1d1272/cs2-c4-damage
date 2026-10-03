@@ -193,3 +193,10 @@ export async function extractFieldFromCompiled(
     await rm(directory, { recursive: true, force: true });
   }
 }
+
+export {
+  loadBundledMap,
+  findBundledMap,
+  createBundledGsiPredictor,
+} from './maps.js';
+export type { BundledGsiPredictor } from './maps.js';

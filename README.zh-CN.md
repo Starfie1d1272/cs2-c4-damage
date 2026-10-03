@@ -2,120 +2,93 @@
 
 [English](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/README.md)
 
-基于地图烘焙伤害场和 Game State Integration（GSI）快照，计算 CS2 C4 伤害、剩余 HP 和致死判断。
-
-- 可复用的 GSI 预测器，支持站姿和蹲姿场景。
-- 原生风格的 float32 运算、midpoint KD-tree 查询和两阶段采样。
-- 资源提取、校验与 SHA-256 来源记录。
-- 逐阶段 trace，方便检查和对照计算过程。
-- TypeScript 类型、ESM/CJS 导出、CLI，零运行时 npm 依赖。
+面向 HUD 和赛事直播应用的 CS2 C4 伤害预测库。内置 10 张地图的精简数据，支持自动选图加载，
+输出单个站立伤害值、剩余 HP 和致死判断。
 
 ## 安装
 
-CLI 和 Node 工具需要 Node.js 22 或更高版本。
-
 ```sh
-npm install cs2-c4-damage@beta
+npm install cs2-c4-damage
 ```
 
-核心库和 GSI 适配器为纯 TypeScript/JavaScript，也可打包到浏览器应用。
-文件访问和反编译器调用集中在 `/node` 入口。
+自动资源加载需要 Node.js 22+。核心库与 GSI 适配器为纯 TypeScript/JavaScript，
+提供 ESM/CJS 导出和类型声明，零运行时 npm 依赖。
 
-## 准备地图
-
-使用 [Source 2 Viewer](https://s2v.app) 从本地 CS2 地图 VPK 中提取
-`maps/<map>/baked_bomb_damage.vdata_c`，并保留对应的游戏 build 信息。游戏资源由应用自行提供。
-
-CLI 可以调用本地 Source2Viewer-CLI，并将结果转换为标准 JSON：
-
-```sh
-npx cs2-c4-damage extract \
-  --compiled /your/resources/baked_bomb_damage.vdata_c \
-  --decompiler /your/tools/Source2Viewer-CLI \
-  --decompiler-sha256 <反编译器可执行文件的SHA256> \
-  --map de_mirage --build-id 25687242 \
-  --out /your/resources/mirage.json
-
-npx cs2-c4-damage inspect /your/resources/mirage.json
-```
-
-可用 `sha256sum`、`shasum -a 256` 或 PowerShell 的 `Get-FileHash -Algorithm SHA256`
-计算可执行文件哈希。还可通过 `--client-sha256` 记录匹配的客户端二进制身份。
-已有反编译文本时，用 `--vdata <文本文件>` 替换两个 `--decompiler` 选项。
-
-build 身份、提取选项和地图更新方式见[资源指南](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/resources.md)。
-
-## 接入 GSI
-
-加载地图并创建一次预测器，在后续快照更新中复用：
+## 快速接入
 
 ```ts
-import { readNormalizedField } from 'cs2-c4-damage/node';
-import { createGsiC4Predictor, decodeGsiSnapshot } from 'cs2-c4-damage/gsi';
+import { createBundledGsiPredictor } from 'cs2-c4-damage/node';
+import { decodeGsiSnapshot } from 'cs2-c4-damage/gsi';
 
-const field = await readNormalizedField('/your/resources/mirage.json');
-const predict = createGsiC4Predictor(field);
+const c4 = createBundledGsiPredictor();
 
-export function handleGsi(payload: unknown, steamId?: string) {
-  // steamId 选择 allplayers[steamId]；省略时选择 player。
-  const result = predict(decodeGsiSnapshot(payload, steamId));
-  if (result.status === 'conditional') {
-    console.log(result.damage); // { min, max }：所计算场景的范围
+export async function handleGsi(payload: unknown, steamId?: string) {
+  const result = await c4.predict(decodeGsiSnapshot(payload, steamId));
+  if (result.status === 'predicted') {
+    console.log(result.damage); // HUD 显示的单个站立伤害值
     console.log(result.hpAfter, result.lethal);
-    console.log(result.scenarios); // 各场景的姿态、伤害和采样 trace
   }
-  return result;
+  return result; // status 为 unavailable 时隐藏预测
+}
+
+// 回合结束、数据断开或来源重启时调用：
+export function resetC4() {
+  c4.reset();
 }
 ```
 
-在 GSI 配置中启用炸弹位置、玩家位置、朝向和血量所需的数据。字段可用性取决于 GSI
-配置和观察视角。适配器接受坐标字符串或数值三元组，处理已安放／正在拆除的炸弹，
-并在提供地图名时核对资源。GSI HTTP 接收服务由应用负责。
+`steamId` 选择 `allplayers[steamId]`，省略时使用 `player`。GSI 需要提供地图名、已安放／
+正在拆除的炸弹位置、玩家位置、朝向和血量。GSI 接收服务和 HUD 展示由应用负责，
+显示处用“按站立估算”这样的简短提示即可。
 
-| 结果          | 含义                                                                        |
-| ------------- | --------------------------------------------------------------------------- |
-| `conditional` | 所列场景的伤害和 HP 范围，以及 `lethal`、`assumptions` 和 `unknownInputs`。 |
-| `unavailable` | 必要输入缺失或非法、资源身份不支持，或场查询无法完成；原因见 `reason`。     |
+服务自动选图、读取内置伤害场，并在后续更新中复用计算器。默认最多缓存两张地图，
+换图或 reset 后会丢弃旧的异步结果；输入缺失或地图不支持时返回 `unavailable`。
+运行时不需要本地 CS2 安装、提取工具、手动下载资源或联网请求。
 
-`lethal` 根据这些场景返回 `true`、`false` 或 `'indeterminate'`。
-已解码的快照可直接传入预测器；单次调用也可使用 `predictC4OutcomeFromGsi(field, snapshot)`。
+## 内置地图
 
-## 直接输入与采样
+Ancient、Anubis、**Cache（叉车）**、Dust II、Inferno、Mirage、Nuke、Overpass、Train、Vertigo。
+内置加载器接受 `de_cache` 这样的标准名称，也接受 `cache` 这样的简称。
+压缩后的数值表合计约 9.4 MiB，随 npm 包提供，按地图按需加载；导入核心库不会读取地图文件。
 
-应用已经持有玩家和炸弹状态时，可使用核心 API：
+地图数据与模型版本在包内部配对，资源更新随库版本交付。
+版本清单及维护者的批量生成流程见[资源指南](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/resources.md)。
+
+## 分离资源加载与计算
+
+采用 Companion/Core 分层的应用，可以在 Node 侧加载资源，再由负责计算的模块创建预测器：
 
 ```ts
-import { createC4Predictor } from 'cs2-c4-damage';
+import { loadBundledMap } from 'cs2-c4-damage/node';
+import { createStandingGsiPredictor } from 'cs2-c4-damage/gsi';
 
-const predict = createC4Predictor(field);
-const result = predict({
-  bombPosition: { x: 100, y: 200, z: 0 },
-  playerPosition: { x: 150, y: 250, z: 0 },
-  playerForward: { x: 1, y: 0, z: 0 },
-  health: 100,
-  ducked: undefined, // 计算两种姿态；已知时传 true/false
-});
+const field = await loadBundledMap('de_cache');
+const predict = createStandingGsiPredictor(field);
+// 为每个玩家复用计算器，换图时重新创建。
+const result = predict(snapshot);
 ```
 
-可选的 `nativeState` 提供碰撞边界／变换，以及地面结果或碰撞查询服务。
-`runStaticSampling` 提供首次查询、二次查询、选中阶段和修正后伤害。
-详见[模型与 API 指南](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/model.md)。
+核心入口的 `createStandingC4Predictor(field)` 接受炸弹／玩家坐标、朝向和血量。
+站立预测接口返回：
 
-## CLI
+| 状态          | 字段                                                                              |
+| ------------- | --------------------------------------------------------------------------------- |
+| `predicted`   | 数值 `damage`、`hpAfter`，布尔值 `lethal`，`stance: 'standing'`，模型身份与假设。 |
+| `unavailable` | `reason`；HUD 可以隐藏该值。                                                      |
 
-```sh
-npx cs2-c4-damage predict /your/resources/mirage.json \
-  --bomb-position 100,200,0 --player-position 150,250,0 \
-  --forward 1,0,0 --health 100 --ducked unknown
+原有 `createC4Predictor` 和 `createGsiC4Predictor` 多场景接口仍可使用。
+高级调用方还可提供原生采样／碰撞状态、查看阶段 trace，详见
+[模型与 API 指南](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/model.md)。
 
-npx cs2-c4-damage compare-traces expected.json actual.json
-npx cs2-c4-damage qualify vectors.json /your/resources/mirage.json
-```
+## 数据与工具
 
-`predict` 输出 JSON；`compare-traces` 对照采样阶段并报告差异路径；
-`qualify` 检查带版本信息的参考向量及资源身份。
+`cs2-c4-damage/maps` 导出 `bundledMapManifest`、`packMapField` 和 `unpackMapField`，
+方便应用管理资源。`loadBundledMap` 返回数据前会检查压缩文件哈希、元数据和标准化场身份。
 
-## 开发与文档
+CLI 保留 `extract`、`inspect`、`predict`、`compare-traces` 和 `qualify`，用于自定义资源和研究。
+提取属于维护者／高级工作流；普通 HUD 接入直接使用内置地图。
+
+## 开发
 
 ```sh
 pnpm install --frozen-lockfile
@@ -126,16 +99,17 @@ pnpm build
 pnpm test:package
 ```
 
-- [文档索引](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/README.md)
-- [架构](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/architecture.md)
-- [更新日志](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CHANGELOG.md)
-- [贡献指南](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CONTRIBUTING.md) · [发布流程](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/releasing.md)
+[文档](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/README.md) ·
+[更新日志](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CHANGELOG.md) ·
+[贡献指南](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CONTRIBUTING.md) ·
+[发布流程](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/releasing.md)
 
-新代码采用 Apache-2.0。原始研究来自 [unicbm](https://github.com/unicbm)，保留作者版权；
-详见[致谢](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CREDITS.md)。
+原创代码采用 Apache-2.0，原始研究来自 [unicbm](https://github.com/unicbm)。
+内置数值地图表由 CS2 数据生成，源游戏材料的权利仍归相应权利人所有。
+详见[致谢](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CREDITS.md)和
+[NOTICE](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/NOTICE)。
 
 ## 精度说明
 
-结果基于 `cs2-win64-2026-10-02-static-v2` 模型和匹配的地图资源。GSI 缺少部分姿态与碰撞状态，
-地面重采样、动态障碍物或特殊变换等情况可能无法精确模拟。输出范围仅覆盖所列场景，
-不涵盖全部未知状态；完整原生一致性尚待实机采集验证。
+HUD 数值按站立状态估算。缺失的碰撞／姿态状态及游戏更新可能使结果与实际伤害不同，
+不承诺实战完全精确模拟。
