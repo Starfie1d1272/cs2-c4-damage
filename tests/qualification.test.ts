@@ -86,14 +86,20 @@ describe('qualification and GSI fail-closed boundaries', () => {
       total: 1,
       passed: 0,
       failed: 0,
-      unavailable: 0,
+      unavailable: 1,
       positiveTotal: 0,
       positiveExactPassed: 0,
       negativeTotal: 1,
-      negativeValidityPassed: 1,
+      negativeValidityPassed: 0,
     });
     expect(result.mismatches).toEqual([
-      { index: -1, reason: 'no-native-valid-cases' },
+      {
+        index: 0,
+        id: 'no-native-result',
+        reason: 'model-unavailable-for-case',
+        expected: false,
+        actual: { status: 'unavailable', reason: 'model-not-qualified' },
+      },
     ]);
   });
 

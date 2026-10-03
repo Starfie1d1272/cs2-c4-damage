@@ -75,7 +75,10 @@ export function validateBombDamageField(field: unknown): readonly string[] {
     if (!isNullableSha256(metadata.normalizedFieldSha256)) {
       reasons.push('invalid-normalized-field-sha256');
     }
-    if (metadata.sourcePairStatus !== 'unverified-source-pair') {
+    if (
+      metadata.sourcePairStatus !== 'unverified-source-pair' &&
+      metadata.sourcePairStatus !== 'self-decompiled-source-pair'
+    ) {
       reasons.push('invalid-source-pair-status');
     }
     if (!isNonEmptyString(metadata.mapName)) reasons.push('missing-map-name');
@@ -91,6 +94,14 @@ export function validateBombDamageField(field: unknown): readonly string[] {
     ) {
       reasons.push('missing-extraction-provenance');
     } else {
+      if (
+        metadata.sourcePairStatus === 'self-decompiled-source-pair' &&
+        (typeof metadata.extraction.executableSha256 !== 'string' ||
+          !SHA256_PATTERN.test(metadata.extraction.executableSha256) ||
+          !metadata.resourceSha256 ||
+          !metadata.decompiledVdataSha256)
+      )
+        reasons.push('missing-self-decompile-evidence');
       if (!isNonEmptyString(metadata.extraction.tool)) {
         reasons.push('missing-extractor-tool');
       }

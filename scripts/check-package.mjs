@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { execPath } from 'node:process';
+import { tmpdir } from 'node:os';
+import { argv, execPath } from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const execFileAsync = (file, args, options) =>
@@ -17,28 +18,29 @@ const execFileAsync = (file, args, options) =>
   });
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const temp = await mkdtemp(join('/tmp', 'cs2-c4-damage-package-'));
+const temp = await mkdtemp(join(tmpdir(), 'cs2-c4-damage-package-'));
 
 try {
-  const packResult = await execFileAsync(
-    'pnpm',
-    ['pack', '--pack-destination', temp],
-    {
-      cwd: root,
-    },
-  );
-  const packageFile = (await readdir(temp)).find((name) =>
-    name.endsWith('.tgz'),
-  );
+  const suppliedPackage = argv[2];
+  const packResult = suppliedPackage
+    ? undefined
+    : await execFileAsync('pnpm', ['pack', '--pack-destination', temp], {
+        cwd: root,
+      });
+  const packageFile =
+    suppliedPackage ??
+    (await readdir(temp)).find((name) => name.endsWith('.tgz'));
   assert.ok(
     packageFile,
-    `pnpm pack did not create a tarball: ${packResult.stdout}`,
+    `pnpm pack did not create a tarball: ${packResult?.stdout}`,
   );
-  const packagePath = join(temp, packageFile);
+  const packagePath = suppliedPackage
+    ? resolve(suppliedPackage)
+    : join(temp, packageFile);
   const tarball = await execFileAsync('tar', ['-tzf', packagePath]);
   const entries = tarball.stdout.split('\n').filter(Boolean);
   const forbidden = entries.filter((entry) =>
-    /(?:c4-damage-hud-native|authorization\.md|\.(?:vpk|dll|vdata_c)$|(?:^|\/)(?:qualification|\.agent-tmp|tmp)(?:\/|$))/i.test(
+    /(?:c4-damage-hud-native|authorization\.md|\.(?:vpk|dll|vdata|vdata_c)$|(?:^|\/)(?:qualification|\.agent-tmp|tmp)(?:\/|$))/i.test(
       entry,
     ),
   );
@@ -48,6 +50,15 @@ try {
     `forbidden package entries: ${forbidden.join(', ')}`,
   );
   assert.ok(entries.includes('package/dist/node/cli.js'));
+  assert.ok(entries.includes('package/CHANGELOG.md'));
+  assert.ok(
+    entries.every((entry) =>
+      /^package\/(?:dist\/|package\.json$|README(?:\.zh-CN)?\.md$|CHANGELOG\.md$|LICENSE$|NOTICE$|CREDITS\.md$)/.test(
+        entry,
+      ),
+    ),
+    'package contains an unexpected file',
+  );
 
   await writeFile(
     join(temp, 'package.json'),
@@ -65,7 +76,7 @@ try {
   const fixture = {
     metadata: {
       formatVersion: 1,
-      modelRevision: 'external-static-v1',
+      modelRevision: 'cs2-win64-2026-10-02-static-v2',
       sourceBuildId: null,
       resourceSha256: null,
       decompiledVdataSha256: null,
@@ -96,6 +107,27 @@ try {
     ],
     { cwd: temp },
   );
+  for (const format of ['mjs', 'cjs']) {
+    const imports =
+      format === 'mjs'
+        ? "import { createC4Predictor } from 'cs2-c4-damage'; import { createGsiC4Predictor, decodeGsiSnapshot } from 'cs2-c4-damage/gsi'; import { readNormalizedField } from 'cs2-c4-damage/node';"
+        : "const { createC4Predictor } = require('cs2-c4-damage'); const { createGsiC4Predictor, decodeGsiSnapshot } = require('cs2-c4-damage/gsi'); const { readNormalizedField } = require('cs2-c4-damage/node');";
+    const code = `${imports}
+      (async () => {
+        const field = await readNormalizedField('field.json');
+        const snapshot = decodeGsiSnapshot({
+          bomb: { state: 'planted', position: '0,0,0' },
+          player: { position: '0,0,0', forward: '1,0,0', state: { health: 100 } }
+        });
+        const result = createGsiC4Predictor(field)(snapshot);
+        if (result.status !== 'conditional' || result.scenarios.length !== 2 || result.scope !== 'listed-scenarios-only') throw new Error('GSI predictor smoke failed');
+        const direct = createC4Predictor(field)({ bombPosition: snapshot.bombPosition, playerPosition: snapshot.playerPosition, playerForward: snapshot.playerForward, health: 100, ducked: false });
+        if (direct.status !== 'conditional' || direct.scenarios.length !== 1) throw new Error('direct predictor smoke failed');
+      })().catch((error) => { console.error(error); process.exitCode = 1; });`;
+    const consumer = join(temp, `predict.${format}`);
+    await writeFile(consumer, code);
+    await execFileAsync(execPath, [consumer], { cwd: temp });
+  }
   await execFileAsync(
     execPath,
     [

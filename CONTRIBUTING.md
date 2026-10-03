@@ -1,27 +1,41 @@
 # Contributing
 
-Read README, docs/architecture.md, docs/model.md and research provenance first.
-Correctness, explicit uncertainty and provenance precede performance. Keep changes small.
-Use Node >=22 and the pnpm version in package.json. Install with `pnpm install`, then run
-`pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`, and `pnpm test:package`.
-Use `pnpm format` for project-owned files only; the original research is excluded.
+Use Node.js 22 or later and the pnpm version in `package.json`. Read
+[architecture](docs/architecture.md), [model](docs/model.md) and
+[provenance](docs/research/PROVENANCE.md) before changing calculation semantics.
 
-Tests must use synthetic fixtures with explicit invented-data provenance. Do not
-require CS2 in deterministic CI. Keep private resource experiments and evidence under
-ignored `qualification/`; never add game binaries, VPKs or complete vdata assets.
-Avoid telemetry containing identifying or private information.
+```sh
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm test:package
+```
 
-Changes to model semantics need scoped evidence, resource/build identity and later
-dynamic qualification. A roadmap item or formula seen in another project is not a parity
-result. Do not replace unknown state with zero/standing, or relax fail-closed behavior
-without proving an exhaustive envelope. Review licenses before reusing third-party code;
-no incompatible or unknown-license code may enter this Apache-2.0 implementation.
+CI runs these checks on Linux, Windows and macOS with Node.js 22 and 24.
+`pnpm format` formats project-owned files; the original research is excluded.
 
-Use Conventional Commits: `type(scope): summary`; no Co-Authored-By trailer.
-Review diffs and untracked files before commits. Keep semantic changes independently
-reviewable. Core must remain independent of Node, DOM, GSI and downstream applications.
-Contributions of new code are under Apache-2.0; that does not change the research exception.
+## Implementation and tests
 
-No npm release is authorized by initialization. Publication requires an explicit decision,
-name-availability check, package-content audit, license review and removal of the private
-guard. Do not describe the foundation as production-ready.
+Keep the core independent of Node, DOM, GSI libraries and downstream applications.
+Use synthetic deterministic fixtures with clear input provenance. Keep real-resource
+experiments in ignored `qualification/`; fixtures and commits must not contain game
+assets, credentials or identifying telemetry.
+
+Model changes need scoped evidence and a model revision distinct from package SemVer
+and game build identity. Preserve unknown state and document the assumptions of new
+scenarios. Native instruction probes belong in `scripts/research`; the normal test suite
+runs their synthetic fixtures without requiring CS2. Live comparison can be contributed
+separately through the versioned trace and qualification interfaces.
+
+Keep `README.md` and `README.zh-CN.md` aligned, update the relevant API guide, and record
+user-visible changes in `CHANGELOG.md`. Preserve the original unicbm research file
+byte-for-byte. Review third-party licenses before source reuse; new code is Apache-2.0.
+
+## Submitting changes
+
+Use Conventional Commits (`type(scope): summary`) without Co-Authored-By trailers.
+Inspect the complete diff and untracked files before committing. Explain behavior and
+validation in pull requests. See [releasing](docs/releasing.md) for the maintained npm
+workflow and [security](SECURITY.md) for vulnerability reporting.

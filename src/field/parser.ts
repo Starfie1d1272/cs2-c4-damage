@@ -6,7 +6,8 @@ import type {
 } from './types.js';
 import { assertValidBombDamageField } from './validation.js';
 
-export const EXTERNAL_MODEL_REVISION = 'external-static-v1';
+import { STATIC_MODEL_REVISION } from '../model-profile.js';
+export const EXTERNAL_MODEL_REVISION = STATIC_MODEL_REVISION;
 
 export interface ParseBombDamageOptions {
   readonly mapName: string;

@@ -3,5 +3,6 @@ dist/
 pnpm-lock.yaml
 LICENSE
 NOTICE
-qualification/
+/qualification/
+/.agent-tmp/
 docs/research/c4-damage-hud-native-2026-09-17.zh-CN.md

@@ -2,7 +2,7 @@ node_modules/
 dist/
 coverage/
 .agent-tmp/
-qualification/
+/qualification/
 *.tgz
 *.vpk
 *.dll

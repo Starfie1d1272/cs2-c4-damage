@@ -1,3 +1,4 @@
+import { createC4Predictor } from '../engine/conditional.js';
 import type { Vec3 } from '../field/types.js';
 import type { BombDamageField } from '../field/types.js';
 import type { C4Outcome } from '../engine/types.js';
@@ -10,9 +11,10 @@ export interface GsiSnapshot {
   readonly playerPosition?: Vec3;
   readonly playerForward?: Vec3;
   readonly health?: number;
+  readonly mapName?: string;
 }
 
-/** Adapter boundary only. Wire parsing, freshness and prediction are deferred. */
+/** Decoded validation and missing-state accounting; no freshness guarantee. */
 export interface GsiAssessment {
   readonly snapshot: GsiSnapshot;
   readonly ducked: undefined;
@@ -60,12 +62,17 @@ export function assessGsiSnapshot(snapshot: GsiSnapshot): GsiAssessment {
 
 /**
  * GSI cannot supply the native pawn sample/collision inputs. It therefore never turns a
- * complete-looking telemetry snapshot into a guessed prediction.
+ * complete-looking telemetry snapshot into native truth; v2 returns labeled scenarios.
  */
 export function predictC4OutcomeFromGsi(
   field: BombDamageField,
   snapshot: GsiSnapshot,
 ): C4Outcome {
+  if (
+    snapshot.mapName !== undefined &&
+    snapshot.mapName !== field.metadata.mapName
+  )
+    return { status: 'unavailable', reason: 'gsi-map-resource-mismatch' };
   const assessment = assessGsiSnapshot(snapshot);
   if (!assessment.valid)
     return { status: 'unavailable', reason: 'gsi-missing-or-invalid-input' };
@@ -80,3 +87,73 @@ export function predictC4OutcomeFromGsi(
 }
 
 export const predictGsiC4Outcome = predictC4OutcomeFromGsi;
+
+/** Decode the selected player's documented position/forward strings or numeric triples.
+ * Never infers posture from an extra field. Missing values remain missing.
+ */
+export function decodeGsiSnapshot(
+  payload: unknown,
+  steamId?: string,
+): GsiSnapshot {
+  const object = (v: unknown): Record<string, unknown> =>
+    v !== null && typeof v === 'object' && !Array.isArray(v)
+      ? (v as Record<string, unknown>)
+      : {};
+  const vec = (v: unknown): Vec3 | undefined => {
+    if (validVec3(v)) return { ...v };
+    const parts = typeof v === 'string' ? v.split(',').map((s) => s.trim()) : v;
+    if (
+      !Array.isArray(parts) ||
+      parts.length !== 3 ||
+      parts.some(
+        (x) => typeof x !== 'number' && (typeof x !== 'string' || x === ''),
+      )
+    )
+      return undefined;
+    const xyz = parts.map(Number);
+    return xyz.every(Number.isFinite)
+      ? { x: xyz[0]!, y: xyz[1]!, z: xyz[2]! }
+      : undefined;
+  };
+  const root = object(payload),
+    player = object(
+      steamId === undefined ? root.player : object(root.allplayers)[steamId],
+    );
+  const bomb = object(root.bomb),
+    health = object(player.state).health;
+  const bombPosition =
+    bomb.state === 'planted' || bomb.state === 'defusing'
+      ? vec(bomb.position)
+      : undefined;
+  const playerPosition = vec(player.position),
+    playerForward = vec(player.forward);
+  const mapName = object(root.map).name;
+  return {
+    ...(bombPosition ? { bombPosition } : {}),
+    ...(playerPosition ? { playerPosition } : {}),
+    ...(playerForward ? { playerForward } : {}),
+    ...(validHealth(health) ? { health } : {}),
+    ...(typeof mapName === 'string' ? { mapName } : {}),
+  };
+}
+
+/** Reuse the immutable compiled tree across GSI updates. */
+export function createGsiC4Predictor(
+  field: BombDamageField,
+): (snapshot: GsiSnapshot) => C4Outcome {
+  const predict = createC4Predictor(field),
+    mapName = field.metadata.mapName;
+  return (snapshot) => {
+    if (snapshot.mapName !== undefined && snapshot.mapName !== mapName)
+      return { status: 'unavailable', reason: 'gsi-map-resource-mismatch' };
+    if (!assessGsiSnapshot(snapshot).valid)
+      return { status: 'unavailable', reason: 'gsi-missing-or-invalid-input' };
+    return predict({
+      bombPosition: snapshot.bombPosition!,
+      playerPosition: snapshot.playerPosition!,
+      playerForward: snapshot.playerForward!,
+      health: snapshot.health!,
+      ducked: undefined,
+    });
+  };
+}

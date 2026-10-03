@@ -1,3 +1,8 @@
+import { STATIC_MODEL_REVISION } from '../model-profile.js';
+import { createStaticFieldSampler } from './static-field.js';
+import { staticPlayerDamage, staticRawFieldValue } from './static-math.js';
+import { normalizeDirection } from './math.js';
+import { floatVec } from '../field/native-tree.js';
 import type { BombDamageField, FieldRecord, Vec3 } from '../field/types.js';
 import {
   findBombsiteIndex,
@@ -29,7 +34,9 @@ export type BakedFieldLookup =
       readonly integerDamage: number;
       readonly blastDirection: Vec3;
       readonly record: FieldRecord;
-      readonly lookupPolicy: 'linear-squared-euclidean-lower-index-tie';
+      readonly lookupPolicy:
+        | 'linear-squared-euclidean-lower-index-tie'
+        | 'native-midpoint-float32-traversal-tie';
       readonly overlapPolicy: 'first-expanded-aabb-match';
     }
   | { readonly status: 'unavailable'; readonly reason: string };
@@ -48,6 +55,41 @@ export type BakedFieldCorrection =
   | { readonly status: 'unavailable'; readonly reason: string };
 
 function lookupField(input: BakedFieldLookupInput): BakedFieldLookup {
+  if (input.field?.metadata?.modelRevision === STATIC_MODEL_REVISION) {
+    try {
+      const result = createStaticFieldSampler(input.field).lookup(
+        input.bombPosition,
+        input.samplePosition,
+      );
+      if (!result.valid)
+        return { status: 'unavailable', reason: result.reason };
+      const record =
+        input.field.records[
+          result.bombsiteIndex * input.field.positions.length +
+            result.positionIndex
+        ]!;
+      return {
+        status: 'resolved',
+        bombsiteIndex: result.bombsiteIndex,
+        positionIndex: result.positionIndex,
+        distanceSquared: result.distanceSquared,
+        rawDamage: staticRawFieldValue(
+          input.field.bombsites[result.bombsiteIndex]!.bombPower,
+          record.phase,
+        ),
+        integerDamage: result.damage,
+        blastDirection: result.blastDirection,
+        record,
+        lookupPolicy: 'native-midpoint-float32-traversal-tie',
+        overlapPolicy: 'first-expanded-aabb-match',
+      };
+    } catch (error) {
+      return {
+        status: 'unavailable',
+        reason: error instanceof Error ? error.message : 'invalid-field',
+      };
+    }
+  }
   const bombsiteIndex = findBombsiteIndex(input.field, input.bombPosition);
   if (bombsiteIndex === undefined) {
     return { status: 'unavailable', reason: 'bomb-outside-expanded-bombsite' };
@@ -99,12 +141,46 @@ export function evaluateBakedFieldCorrection(
 ): BakedFieldCorrection {
   const lookup = lookupField(input);
   if (lookup.status === 'unavailable') return lookup;
-  const correction = correctionRangeForDucked(
+  let correction = correctionRangeForDucked(
     lookup.integerDamage,
     lookup.blastDirection,
     input.playerForward,
     input.ducked,
   );
+  if (lookup.lookupPolicy === 'native-midpoint-float32-traversal-tie') {
+    const normalized = normalizeDirection(input.playerForward);
+    if (
+      !normalized ||
+      (input.ducked !== undefined && typeof input.ducked !== 'boolean')
+    )
+      return { status: 'unavailable', reason: 'invalid-correction-input' };
+    const forward = floatVec(
+      Math.abs(
+        Math.hypot(
+          input.playerForward.x,
+          input.playerForward.y,
+          input.playerForward.z,
+        ) - 1,
+      ) > 1e-4
+        ? normalized
+        : input.playerForward,
+    );
+    const values = (
+      input.ducked === undefined ? [false, true] : [input.ducked]
+    ).map((ducked) =>
+      staticPlayerDamage(
+        lookup.integerDamage,
+        lookup.blastDirection,
+        forward,
+        ducked,
+      ),
+    );
+    correction = {
+      min: Math.min(...values),
+      max: Math.max(...values),
+      unknownInputs: input.ducked === undefined ? ['ducked'] : [],
+    };
+  }
   if (!correction)
     return { status: 'unavailable', reason: 'invalid-forward-vector' };
   return {

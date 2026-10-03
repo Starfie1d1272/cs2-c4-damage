@@ -30,6 +30,7 @@ export interface QualificationVectors {
   readonly decompiledVdataSha256: string;
   readonly normalizedFieldSha256: string;
   readonly sourcePairStatus: SourcePairStatus;
+  readonly decompilerSha256?: string;
   readonly map: string;
   readonly modelRevision: string;
   readonly cases: readonly QualificationCase[];
@@ -87,6 +88,7 @@ export interface QualificationResult {
     readonly positiveTotal: number;
     readonly positiveExactPassed: number;
     readonly negativeTotal: number;
+    /** Reserved: unavailable is not native false, so the current model cannot increment this. */
     readonly negativeValidityPassed: number;
   };
   readonly mismatches: readonly QualificationMismatch[];
@@ -100,13 +102,20 @@ function validVec3(value: unknown): value is Vec3 {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Record<string, unknown>;
   return ['x', 'y', 'z'].every(
-    (key) => typeof candidate[key] === 'number' && Number.isFinite(candidate[key]),
+    (key) =>
+      typeof candidate[key] === 'number' && Number.isFinite(candidate[key]),
   );
 }
 
 function normalizeVec3(value: unknown): Vec3 | undefined {
   if (Array.isArray(value)) {
-    if (value.length !== 3 || !value.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate))) {
+    if (
+      value.length !== 3 ||
+      !value.every(
+        (coordinate) =>
+          typeof coordinate === 'number' && Number.isFinite(coordinate),
+      )
+    ) {
       return undefined;
     }
     return { x: value[0]!, y: value[1]!, z: value[2]! };
@@ -123,7 +132,9 @@ function validDamage(value: unknown): value is number {
   );
 }
 
-function normalizeFieldTrace(value: unknown): QualificationFieldTrace | undefined {
+function normalizeFieldTrace(
+  value: unknown,
+): QualificationFieldTrace | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const candidate = value as Record<string, unknown>;
   const blastDirection =
@@ -232,7 +243,8 @@ function normalizeCase(value: unknown): QualificationCase | undefined {
     !bombPosition ||
     !playerPosition ||
     !forward ||
-    forward.x * forward.x + forward.y * forward.y + forward.z * forward.z <= 0 ||
+    forward.x * forward.x + forward.y * forward.y + forward.z * forward.z <=
+      0 ||
     typeof candidate.ducked !== 'boolean' ||
     typeof health !== 'number' ||
     !Number.isSafeInteger(health) ||
@@ -264,8 +276,11 @@ function normalizeCase(value: unknown): QualificationCase | undefined {
   };
 }
 
-export function parseQualificationVectors(value: unknown): QualificationVectors {
-  if (!value || typeof value !== 'object') throw new Error('qualification-vectors-not-object');
+export function parseQualificationVectors(
+  value: unknown,
+): QualificationVectors {
+  if (!value || typeof value !== 'object')
+    throw new Error('qualification-vectors-not-object');
   const candidate = value as Record<string, unknown>;
   const rawCases = candidate.cases;
   const cases = Array.isArray(rawCases) ? rawCases.map(normalizeCase) : [];
@@ -276,7 +291,10 @@ export function parseQualificationVectors(value: unknown): QualificationVectors 
     !validSha256(candidate.resourceSha256) ||
     !validSha256(candidate.decompiledVdataSha256) ||
     !validSha256(candidate.normalizedFieldSha256) ||
-    candidate.sourcePairStatus !== 'unverified-source-pair' ||
+    (candidate.sourcePairStatus !== 'unverified-source-pair' &&
+      candidate.sourcePairStatus !== 'self-decompiled-source-pair') ||
+    (candidate.sourcePairStatus === 'self-decompiled-source-pair' &&
+      !validSha256(candidate.decompilerSha256)) ||
     typeof candidate.map !== 'string' ||
     candidate.map.trim() === '' ||
     typeof candidate.modelRevision !== 'string' ||
@@ -295,6 +313,9 @@ export function parseQualificationVectors(value: unknown): QualificationVectors 
     decompiledVdataSha256: candidate.decompiledVdataSha256,
     normalizedFieldSha256: candidate.normalizedFieldSha256,
     sourcePairStatus: candidate.sourcePairStatus,
+    ...(candidate.sourcePairStatus === 'self-decompiled-source-pair'
+      ? { decompilerSha256: candidate.decompilerSha256 as string }
+      : {}),
     map: candidate.map,
     modelRevision: candidate.modelRevision,
     cases: cases as QualificationCase[],
@@ -341,7 +362,12 @@ function identityFor(
       metadata?.normalizedFieldSha256 !== undefined &&
       metadata.normalizedFieldSha256.toLowerCase() ===
         vectors.normalizedFieldSha256.toLowerCase(),
-    sourcePairStatus: metadata?.sourcePairStatus === vectors.sourcePairStatus,
+    sourcePairStatus:
+      metadata?.sourcePairStatus === vectors.sourcePairStatus &&
+      (vectors.sourcePairStatus !== 'self-decompiled-source-pair' ||
+        (!!vectors.decompilerSha256 &&
+          metadata?.extraction?.executableSha256?.toLowerCase() ===
+            vectors.decompilerSha256.toLowerCase())),
     modelRevision: metadata?.modelRevision === expectedModelRevision,
   };
   return {
@@ -369,15 +395,22 @@ function comparePrediction(
   prediction: C4Outcome,
   testCase: QualificationCase,
 ): QualificationComparison {
+  if (prediction.status === 'conditional')
+    return {
+      status: 'unavailable',
+      reason: 'conditional-prediction-not-exactly-qualifying',
+      expected: testCase.nativeValid ? testCase.nativeDamage : false,
+      actual: prediction,
+    };
   if (prediction.status === 'unavailable') {
-    return testCase.nativeValid
-      ? {
-          status: 'unavailable',
-          reason: 'model-unavailable-for-case',
-          expected: testCase.nativeDamage,
-          actual: prediction,
-        }
-      : { status: 'passed', reason: 'native-query-unavailable' };
+    // An unavailable prediction is an epistemic limit, not a native false return.
+    // C4Outcome currently has no qualified native-query-failure variant.
+    return {
+      status: 'unavailable',
+      reason: 'model-unavailable-for-case',
+      expected: testCase.nativeValid ? testCase.nativeDamage : false,
+      actual: prediction,
+    };
   }
   if (!testCase.nativeValid) {
     return {
@@ -405,7 +438,9 @@ function comparePrediction(
   };
 }
 
-function emptyTotals(cases: readonly QualificationCase[]): QualificationResult['totals'] {
+function emptyTotals(
+  cases: readonly QualificationCase[],
+): QualificationResult['totals'] {
   const positiveTotal = cases.filter((testCase) => testCase.nativeValid).length;
   return {
     total: cases.length,
@@ -509,8 +544,12 @@ export function qualifyVectors(
         index,
         ...(testCase.id === undefined ? {} : { id: testCase.id }),
         reason: comparison.reason,
-        ...(comparison.expected === undefined ? {} : { expected: comparison.expected }),
-        ...(comparison.actual === undefined ? {} : { actual: comparison.actual }),
+        ...(comparison.expected === undefined
+          ? {}
+          : { expected: comparison.expected }),
+        ...(comparison.actual === undefined
+          ? {}
+          : { actual: comparison.actual }),
       });
       return;
     }
@@ -519,7 +558,9 @@ export function qualifyVectors(
       index,
       ...(testCase.id === undefined ? {} : { id: testCase.id }),
       reason: comparison.reason,
-      ...(comparison.expected === undefined ? {} : { expected: comparison.expected }),
+      ...(comparison.expected === undefined
+        ? {}
+        : { expected: comparison.expected }),
       ...(comparison.actual === undefined ? {} : { actual: comparison.actual }),
     });
   });

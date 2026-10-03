@@ -1,109 +1,147 @@
-# Model evidence and qualification status
+# Model and API
 
-This is an evidence and qualification boundary, not a claim of native parity.
-Primary evidence: [unicbm's original report](research/c4-damage-hud-native-2026-09-17.zh-CN.md).
-Public sources and their limitations: [provenance](research/PROVENANCE.md).
-The current static query closure is recorded in [native-query-closure](research/native-query-closure.md).
+The active revision is `cs2-win64-2026-10-02-static-v2`, associated with build `25687242`
+and the client identity exported as `STATIC_CLIENT_SHA256`. Package SemVer, model revision
+and resource identity are independent; see [resources](resources.md) for the metadata.
 
-## Strong static evidence in the supplied build
+## Predictors
 
-The report audits Windows x64 client/server binaries identified by their hashes,
-not an established universal CS2 build ID. It reports a closed HUD → query and server
-shockwave → actual damage → query chain; a bool success return, byte damage and vector
-output; failure distinct from zero; resource versions 1/2 and nearest-node field use;
-bombsite AABB selection with 32-unit expansion; phase/power conversion; possible spatial
-resampling; integer truncation and clamp; stance and facing Bias corrections only below
-100 damage; and ignore-armor semantics for standard C4 damage.
+| API                                    | Purpose                                                      |
+| -------------------------------------- | ------------------------------------------------------------ |
+| `createGsiC4Predictor(field)`          | Compile a field once and predict from decoded GSI snapshots. |
+| `decodeGsiSnapshot(payload, steamId?)` | Decode the selected player and planted/defusing bomb fields. |
+| `createC4Predictor(field)`             | Compile a field once and predict from direct state inputs.   |
+| `predictC4Outcome(input)`              | One-shot direct prediction; input includes `field`.          |
+| `createStaticFieldSampler(field)`      | Compile a field for explicit sample-point lookups.           |
+| `runStaticSampling(sampler, input)`    | Execute the sampling state machine and return its trace.     |
 
-Crouch's 0.45 is a nonlinear Bias parameter, not a multiplier. Facing depends on the
-field direction and native forward. Raw records are not HP. Those findings are attributed
-to unicbm and remain scoped to the inspected build. The report did not perform dynamic
-prediction-vs-applied-damage tests and did not audit Linux. DLL signatures and RVAs are
-research evidence only, never library runtime dependencies.
+Prepared predictors copy the field and build its tree once. Replace the predictor when
+changing maps or resources. Constructors throw for invalid/unsupported fields; prediction
+calls return `unavailable` for unresolved inputs or field queries. Known conflicting
+build/client identities and duplicate node coordinates are rejected.
 
-Valve's July 8 notes independently establish precomputed map damage and shockwave travel.
-July 9 removed the map-wide one-HP minimum and fixed boundary behavior. These changes
-show why older radius/armor formulae and unversioned data cannot silently serve as fallback.
-The original report also cites a July 20 HUD-timing change; this repository has not
-independently verified that particular update and does not depend on it.
+## Results
 
-## Implemented external model
+A `conditional` result contains:
 
-The parser validates Source 2 Viewer text, packed little-endian field data,
-finite/bounded values, exact record cardinality and provenance. The field-only model
-implements 32-unit AABB expansion, bombsite-major indexing, deterministic 3D nearest
-lookup, the documented Phase/power conversion, yaw/pitch `/256` direction decoding,
-integer truncation and the crouch/facing Bias arithmetic.
-Packed representation validation does not invent a narrower gameplay-domain limit for
-Phase, coordinates or bomb power; those limits remain subject to evidence.
+| Field                          | Meaning                                                                              |
+| ------------------------------ | ------------------------------------------------------------------------------------ |
+| `damage`, `hpAfter`            | `{ min, max }` over the evaluated scenarios.                                         |
+| `lethal`                       | `true` if every scenario is lethal, `false` if none is, otherwise `'indeterminate'`. |
+| `scenarios`                    | Each posture, sample position, damage, HP, lethal flag and trace.                    |
+| `assumptions`, `unknownInputs` | State assumptions and missing information used in the calculation.                   |
+| `scope`                        | `listed-scenarios-only`.                                                             |
+| `modelRevision`, `evidence`    | Calculation revision and `static-reconstruction` evidence type.                      |
 
-`lookupBakedField` requires an explicit sample point and reports its internal
-nearest/overlap policy. `evaluateBakedFieldCorrection` can enumerate known
-standing/crouched arithmetic, but retains `ground-collision-correction` and
-`native-second-sample-selection` as unknown. These helpers are not native parity and
-do not emit a conservative native damage envelope.
+An `unavailable` result includes a `reason`. The broader `C4Outcome` type also includes
+`bounded`, used by `outcomeFromDamageRange` for a caller-established envelope, and
+`exact`, reserved for qualified native parity. The current predictors produce
+`conditional` or `unavailable`.
 
-`outcomeFromDamageRange` remains the only model-independent route to a `bounded`
-outcome. `predictC4Outcome` and the GSI prediction adapter return `unavailable` for
-valid external inputs until a matched-build native qualification establishes the
-missing semantics. No current function emits `exact`.
+## GSI scenarios
 
-## Current qualification gates
+The default GSI path evaluates correlated standing and crouched sampling/correction
+scenarios. Direct callers can supply `ducked: true` or `false` to choose one posture.
+The scenario inputs are:
 
-| Question                           | Current static conclusion                                                                                                                   | External status                    |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| Native spatial sample point        | A target virtual call writes the first field-query `Vec3`; exact origin/center/eye/offset semantics are not proven.                         | fail closed                        |
-| Ground-height/collision correction | The query depends on target collision state and map collision geometry not present in field+GSI.                                            | fail closed                        |
-| Second-sample condition            | A gated second lookup reuses x/y and adjusts z from native transform/correction state; exact predicate and failure priority are incomplete. | fail closed                        |
-| Exact field lookup                 | Resource indexing and 32-unit expansion are supported; KD-tree metric, ties and overlap traversal are not proven.                           | deterministic internal policy only |
-| Phase/direction conversion         | Static formula and byte-angle conversion are implemented and unit-tested; live native output comparison is absent.                          | qualification-ready                |
-| Arbitrary-position behavior        | Outside/no-node/missing-record paths are unavailable; no legacy/radius fallback is used.                                                    | fail closed                        |
-| GSI vs pawn coordinates            | GSI position/forward/HP do not establish the native target sample or collision truth; crouch stays unknown.                                 | unavailable                        |
-| Build changes                      | Resource/DLL/build/model identity is bound by metadata and vector checks.                                                                   | reject mismatch                    |
+- GSI position as absolute pawn origin, and forward as the native view direction.
+- Upright, unscaled, symmetric hulls: 72 units standing or 54 units crouched.
+- The first field result retained through the ground-resampling stage.
+- A current, synchronized snapshot and matching map under standard damage rules.
 
-The deterministic suite covers the 99/100 transition, Bias rounding boundaries,
-forward-vector precision, parser edges, site/nearest policies and fail-closed GSI
-inputs. A native query value is a current-state conditional prediction, not a future
-lethal guarantee; live work must additionally compare synchronized native vectors and
-actual applied damage under standard rules.
+Near-unit forward values are preserved. Other nonzero finite forward values are
+normalized, with `forward-renormalized` recorded in the assumptions.
 
-## Missing external inputs and uncertainty policy
+## Supplying sample and ground state
 
-GSI currently lacks reliable native `m_bDucked`. It also does not establish the exact
-native spatial sample, collision result or ground correction. Position, forward and HP
-can be exposed but may be missing or stale. No claim is made that Valve can never add
-these fields; they are current limitations. Map/resource identity must be supplied and verified separately.
+`nativeState` replaces the default hull and resampling assumptions:
 
-- Unknown ducked can eventually be enumerated across true/false **only after** both
-  branches and every other necessary input are qualified. Never default to standing.
-- Facing or spatial uncertainty can be bounded only with a proven exhaustive envelope,
-  not guessed extrema or a pair of sample positions. All unknowns remain recorded even
-  if the lethal conclusion is invariant or damage endpoints coincide.
-- Unbounded spatial/collision uncertainty, missing fields, unsupported maps, unknown
-  build/resource matching, invalid data or missing qualification must yield unavailable.
-- Absence of baked data is unavailable. Native legacy fallback exists per the report,
-  but this library does not implement or silently substitute it.
+```ts
+const result = predict({
+  bombPosition,
+  playerPosition,
+  playerForward,
+  health,
+  ducked,
+  nativeState: {
+    sample: {
+      origin,
+      collision: {
+        mins,
+        maxs,
+        scale,
+        orientation: { kind: 'axis-aligned' },
+      },
+    },
+    resampling: { kind: 'ground-hit', groundZ },
+  },
+});
+```
 
-## Private qualification workflow
+The effective orientation can also be a unit quaternion:
+`{ kind: 'quaternion', x, y, z, w }`. Use `collision: null` when the native collision
+object is explicitly absent; the sample then uses the origin. `resampling` accepts
+`{ kind: 'skip', reason }`, `{ kind: 'unknown' }`, a ground hit, or a `CollisionContext`.
 
-Use user-owned resources under gitignored `qualification/`; never commit or npm-publish
-VPKs, DLLs or complete vdata resources. The `qualify <vectors.json> <field>` command
-requires exact map/build/client/resource/model identity and reports pass/fail totals,
-mismatches and unresolved cases without tolerance. Vector cases use decoded Vec3
-objects or JSON triples and must record whether the native query itself was valid;
-this repository does not fabricate native vectors. Evidence must bind compiled and
-decompiled resource hashes, the canonical `normalizedFieldSha256`, and the explicit
-`sourcePairStatus`; the current status is always `unverified-source-pair` because the
-extractor does not self-decompile compiled resources. Optional `nativeFailureReason`
-and trace fields preserve Windows evidence, but the current harness compares final
-native validity and damage only. A `passed` result requires non-empty evidence with at
-least one native-valid case, an exact damage match for every native-valid case, and no unresolved positive
-case; negative validity cases are reported separately. Trace capture is still required
-to close Q1–Q3.
+### Collision provider
 
-Record exact build, map/resource SHA-256, extractor revision, platform, model revision,
-standard game rules and synchronized inputs with expected native query and actual
-applied outcomes. Obtain observations through a separately authorized research setup;
-this package provides no injection, hooks or native-RVA execution. Define numeric and
-coverage acceptance criteria before claiming parity. Publish only permissible aggregate
-evidence and synthetic regressions.
+A `CollisionContext` supplies the native eligibility gate, origin, selected
+normal/ducked/special hull, maximum-coordinate configuration and a pure query callback.
+`resolveResampling` issues:
+
+1. A visibility ray, mask `1`, group `3`.
+2. When obstructed, a downward hull query from the origin with filter fields
+   `0xC3011`, `0x48100`, `0x40000`, group `11`.
+
+The provider implements map/dynamic collision geometry, entity/owner exclusions and
+native callback semantics. It returns `clear`, `hit` with `endPosition`, or `unknown`.
+Exceptions and missing required state become `unknown`. A miss retains the first result;
+a hit supplies the ground z. The library builds the requests and sampling transitions;
+the host supplies the physics service.
+
+## Sampling and arithmetic
+
+The v2 implementation performs:
+
+- Inclusive bombsite AABB lookup expanded by 32 units, first matching site, site-major records.
+- Float32 midpoint KD-tree construction with the native axis ties, two-sweep partition,
+  eight-point leaf threshold, near-first traversal and strict distance/plane comparisons.
+- Float32 Phase/power remapping, native truncation/clamping, `/255` byte-angle decoding,
+  and stance/facing Bias using the reconstructed constants and operation order.
+- Collision-center sampling with effective orientation, scale and absolute origin.
+- Second sampling at `z = f32(f32(first.z - origin.z) + groundZ)`.
+
+A successful second lookup replaces damage and direction; a failed second lookup retains
+the first result. A failed first lookup ends the query. With unknown collision state,
+`runStaticSampling` returns `firstPassDamage` and leaves final damage/stage unset. The GSI
+scenario uses that first-pass value under its explicit retention assumption.
+
+Historical helpers (`decodeBlastDirection`, `scaleDamage`, `calculateRawFieldDamage`,
+`findNearestPosition`) retain their original external-model semantics. Use prepared v2
+predictors or `staticBlastDirection`, `staticScaleDamage`, `staticRawDamage` for v2.
+Field-only helpers dispatch by the field's `modelRevision`.
+
+## Traces and verification
+
+`compareSamplingTraces(expected, actual)` compares the first sample/result, resampling,
+second sample/result, selected stage and final damage, reporting differing paths.
+Complete equal evidence returns `matched`; missing stages return `incomplete`;
+differences return `mismatch`. The CLI exposes this as `compare-traces`.
+
+The versioned qualification harness binds map/build, binary/resource hashes and model
+revision to reference vectors. Its exact comparison keeps conditional or unavailable
+predictions unresolved, including native-invalid cases. Source-pair validation also
+binds the decompiler executable hash for self-decompiled resources.
+
+Synthetic tests cover 183 native built-tree queries, 256 encoded sin/cos angles, 400
+Bias cases and 72 Phase/power cases, matching those native instruction outputs without
+tolerance. A separate 40-probe suite covers query branches, sampling transforms and
+helper inputs. Details and transform tolerances are recorded in
+[provenance](research/PROVENANCE.md) and the [static audit](research/static-audit-2026-10-03.zh-CN.md).
+
+## Accuracy
+
+Scenario extrema cover the listed states, not all missing collision or posture states.
+Providing native state reduces assumptions; live trace/applied-damage qualification is
+still needed for full native parity. Dynamic obstacles, ground correction and unusual
+transforms may prevent exact simulation from GSI alone.

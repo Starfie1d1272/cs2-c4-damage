@@ -1,85 +1,64 @@
-# Architecture foundation
+# Architecture
 
-## Ownership and dependency direction
+The core is pure TypeScript without Node, DOM, GSI-library or HUD dependencies.
+`src/model-profile.ts` identifies the static semantics separately from library version
+and resource provenance. Field parsing/spatial code is under `src/field`, calculations
+under `src/engine`, decoded/wire-input adaptation under `src/gsi`, and filesystem/process
+operations exclusively under `src/node`. The core never loads DLLs or runs their code.
 
-- `src/field`: normalized field contracts, strict Source 2 Viewer parsing/validation and deterministic spatial policies.
-- `src/engine`: pure functions consuming field contracts, no Node, DOM or telemetry dependencies.
-- `src/gsi`: separate public entry for decoded telemetry, input validation and fail-closed prediction routing.
-- `src/node`: Node-only file extraction, normalized-field I/O, summary and CLI; it is not imported by core.
+## Model construction and calls
 
-No plugin/provider framework or monorepo is needed. The core does not import adapters.
-The long-term flow is user-owned resources → extraction/normalization → engine →
-telemetry integrations. At call time adapters translate snapshots into engine inputs.
+`createStaticFieldSampler` validates and snapshots the field, builds the native-style
+float32 midpoint tree, and exposes explicit-point field queries. `createC4Predictor`
+reuses that sampler across snapshots. No mutable global field cache is used. Caller
+changes cannot silently corrupt the compiled model; a new resource needs a new model.
+Known client/build mismatches and duplicate coordinate mappings are rejected.
 
-## Field contract and parser
+`nativeSamplePosition` consumes an effective native collision/scene transform.
+`resolveResampling` builds the observed visibility and downward-hull requests for an
+injected collision provider. `runStaticSampling` implements first lookup, native
+resampling z, fallback on second failure and player correction, and records the trace.
+No physics implementation or runtime DLL addresses are part of the core.
 
-`BombDamageField` contains metadata, unexpanded bombsite AABBs/power, world positions
-and records. Records use bombsite-major indexing; a site index is not an A/B label.
-Phase is a raw uint16 and Yaw/Pitch raw uint8 values, not HP or degrees. The parser
-and validator reject malformed/nonfinite coordinates, inverted bounds, unsupported
-versions, empty field arrays, malformed hashes and inconsistent record counts. Blob
-properties must bind directly to their `#[...]` value and the resource version must be
-read from `header.version`; no caller-provided field is trusted for prediction without
-validation.
+The default GSI path lacks those native inputs. It evaluates correlated standing and
+crouched sample/correction scenarios, clearly labels its assumptions, and returns
+`conditional` with `scope: listed-scenarios-only`. The main API no longer waits for live
+qualification before offering those explicitly conditional calculations. It does not
+claim an exhaustive envelope over missing states. Unknown collision in the low-level
+trace yields `firstPassDamage`, not final damage or a selected stage.
 
-The parser consumes a documented VRF/Source 2 Viewer decompiled representation.
-No full Source 2 binary system will be reimplemented for this foundation.
-Parser syntax/provenance validation is distinct from model qualification. A successful
-parse does not establish that the field reproduces the native entity query.
-Packed integer widths are validated at decode time; no narrower gameplay-domain range
-for Phase or coordinate/power values is invented beyond the proven resource contract.
+`exact` stays reserved. `bounded` is constructed only by `outcomeFromDamageRange` from
+a caller-established envelope; scenario extrema do not enter that helper. A native
+query value is a current-state result, never a guarantee of future motion or death.
 
-`formatVersion: 1` describes this project's proposed normalized shape;
-`sourceResourceVersion: 1 | 2` describes the source payload version.
-`modelRevision` identifies qualified semantic rules, not an npm version.
-`sourceBuildId`, `resourceSha256`, `decompiledVdataSha256` and
-`normalizedFieldSha256` may be null to represent unknown provenance; non-null strings do
-not prove correctness. Extractor identity/revision and map name must also be retained.
-The current `sourcePairStatus` is explicitly `unverified-source-pair`: the Node extractor
-hashes supplied compiled/decompiled inputs but does not decompile the compiled resource
-itself. Qualification vectors bind the available identities and this limitation to
-evidence; no user-set `qualified: true` flag should enable exact predictions.
+## Telemetry
 
-## Field and outcome semantics
+`decodeGsiSnapshot` explicitly selects `player` or an `allplayers[steamId]` entry, parses
+positions/forward from finite triples or comma-separated strings, and requires a planted
+or defusing bomb. It does not infer crouch from custom payload fields. The decoded adapter validates
+positive health and a usable forward, rejects provided map-name mismatches, and preserves
+missing state. It does not establish synchronization/freshness; conditional results state
+that assumption. Use `createGsiC4Predictor` for repeated updates without rebuilding.
 
-`lookupBakedField` implements the external field-only calculation when the caller
-supplies an explicit target sample point. Its linear squared-Euclidean/lower-index
-nearest policy and first-overlap site policy are deterministic internal policies,
-not proven native tie behavior. `evaluateBakedFieldCorrection` preserves collision
-and second-sample unknowns.
+## Resource lineage
 
-`predictC4Outcome` is a deliberate fail-closed entry point. For a valid field and
-well-formed external positions/forward/health it remains unavailable until the native
-sample point, collision correction and second sample are dynamically qualified.
-Its input includes field, bomb and player positions, player forward, explicit
-`boolean | undefined` ducked state, and health. `undefined` is never treated as standing.
+The parser uses the VRF text representation, not a new Source 2 binary decoder.
+Source resource versions 1/2 and normalized formatVersion 1 are independent of the model.
+Null hashes/build IDs remain unknown. Manual compiled/text inputs are unverified pairs.
+The Node-only self-decompile path runs a pinned executable on a private input snapshot,
+validates the generated text and hashes, and records the run's executable identity.
+This is evidence of a source pair, not proof of current game matching or qualification.
 
-`outcomeFromDamageRange` accepts a caller-established inclusive integer [0,255] range
-and positive safe-integer HP. It computes reverse-ordered HP bounds and threshold
-lethality. It never derives a field envelope or emits exact. A singleton range remains
-bounded and retains unknowns. Invalid inputs return unavailable; dead players are
-outside this helper's domain. Standard damage rules are assumed.
+## Comparison and packaging
 
-`exact` means exact within a qualified model, resource and complete current-state
-snapshot, never a guarantee about future motion or actual future death.
-No foundation function currently constructs that variant.
+`compareSamplingTraces` strictly compares full stage evidence and reports incomplete
+for missing stages. The legacy qualification harness's final exact comparison does not
+accept conditional or model-unavailable predictions. Native-instruction probes under
+`scripts/research` are development tools only; real binaries/resources stay ignored.
+The fixtures contain only deterministic synthetic inputs and their calculated outputs.
 
-## GSI boundary
-
-`GsiSnapshot` is a small decoded-input shape, not the full Valve wire schema. Field
-availability depends on payload configuration, perspective and game state. The current
-assessment validates positions, forward and positive health, then reports ducked,
-native sample point, ground/collision correction and second-sample uncertainty. It does
-not parse strings, establish sample time, validate freshness or select players. A
-supplied extra crouch field does not become native `m_bDucked` evidence.
-
-## Packaging
-
-Root, `/gsi` and `/node` exports provide separate ESM/CJS declaration and runtime paths.
-Core has zero runtime dependencies, neutral-platform compilation and no Node/DOM calls;
-only `/node` uses Node APIs. The CLI reads user-owned resources but does not vendor
-them. Only dist and selected license/readme files are package-allowlisted. Research and
-game resources are not published. `private: true` guards publication; npm/release
-workflows remain out of scope. Qualification traces are evidence records; the current
-harness compares final native validity/damage and does not claim to close Q1–Q3 without
-Windows trace capture.
+Root, `/gsi` and `/node` provide ESM/CJS and declarations. Only `/node` uses Node APIs
+or launches a caller-selected decompiler. Package allowlisting excludes research tools,
+fixtures, all game assets and telemetry. The package has zero runtime npm dependencies.
+GitHub Actions verifies the package across platforms and publishes tagged releases through
+the [npm workflow](releasing.md).

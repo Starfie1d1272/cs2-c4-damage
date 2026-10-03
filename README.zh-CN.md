@@ -1,139 +1,124 @@
 # cs2-c4-damage
 
-[English canonical README](README.md)
+[English](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/README.md)
 
-独立、可复用的 TypeScript library，用于解析 current-CS2 烘焙 C4 伤害场，提供可审计的
-field-only 计算，并为匹配 build 的 native qualification 准备工具。**external model 已实现且
-已达到 qualification-ready，但尚未通过动态 native parity qualification。**
+基于地图烘焙伤害场和 Game State Integration（GSI）快照，计算 CS2 C4 伤害、剩余 HP 和致死判断。
 
-> 本项目不向 CS2 注入代码。
->
-> 本项目不 hook client.dll/server.dll。
->
-> 本项目不分发 Valve 游戏资产。
+- 可复用的 GSI 预测器，支持站姿和蹲姿场景。
+- 原生风格的 float32 运算、midpoint KD-tree 查询和两阶段采样。
+- 资源提取、校验与 SHA-256 来源记录。
+- 逐阶段 trace，方便检查和对照计算过程。
+- TypeScript 类型、ESM/CJS 导出、CLI，零运行时 npm 依赖。
 
-**仅靠 GSI 的估算目前不能声称完整 native parity，因为 GSI 不暴露原生查询使用的全部输入。**
+## 安装
 
-## 当前范围
+CLI 和 Node 工具需要 Node.js 22 或更高版本。
 
-已实现：
-
-- Source 2 Viewer 反编译 `CS2_BOMB_DAMAGE_DATA`（version 1/2）的严格 parser 和 validator；
-- 32-unit bombsite 扩展、确定性的 field lookup、原始 Phase/power 转换、`/256` 方向解码，
-  以及文档中的 Bias/截断数学；
-- 要求显式 sample point 的 field-only helper，并保留 native collision 与二次采样的不确定性；
-- 已解码的 GSI-like adapter、Node 提取/检查/预测 CLI，以及绑定 build/resource identity 的
-  machine-readable qualification harness。
-
-对合法输入，`predictC4Outcome` 仍明确返回 `unavailable: model-not-qualified`。静态分析已证明
-native query 还需要 target 提供的 sample point、collision/ground truth 和条件性二次采样，普通
-field 加 GSI 无法重建这些输入。详见[native query closure](docs/research/native-query-closure.md)。
-
-`exact` 只为完整模型通过 qualification 后保留；`bounded` 仅能来自调用方提供、已经证明覆盖
-所有未知量的 inclusive envelope，field-only 估计不会被静默升级为该 envelope。unknown 绝不等于
-零伤害、站立或一次成功的 native query。
-
-这是 library，不是 HUD；runtime dependency 为零，不依赖 RivalHub、React、OBS、Fastify、
-CSTV 或特定 GSI library。RivalHub-Broadcast 未来只是 downstream consumer 之一。
-
-## 架构
-
-```text
-用户自己持有的 CS2 地图资源 + compiled resource
-  → Node 提取 / 带 provenance 的 normalized field
-  → 纯 field parser、lookup 与 arithmetic
-  → decoded telemetry adapter / qualification harness
-  → 通过匹配 build 的 native qualification 后才允许 exact
+```sh
+npm install cs2-c4-damage@beta
 ```
 
-Field contract 保留包区边界和 power、位置、原始 Phase/Yaw/Pitch，以及提取来源。
-归一化格式版本、模型修订、CS2 build/resource identity 与 npm SemVer 严格分离。
-详见[架构](docs/architecture.md)、[模型状态](docs/model.md)和[研究来源](docs/research/PROVENANCE.md)。
+核心库和 GSI 适配器为纯 TypeScript/JavaScript，也可打包到浏览器应用。
+文件访问和反编译器调用集中在 `/node` 入口。
 
-## API
+## 准备地图
+
+使用 [Source 2 Viewer](https://s2v.app) 从本地 CS2 地图 VPK 中提取
+`maps/<map>/baked_bomb_damage.vdata_c`，并保留对应的游戏 build 信息。游戏资源由应用自行提供。
+
+CLI 可以调用本地 Source2Viewer-CLI，并将结果转换为标准 JSON：
+
+```sh
+npx cs2-c4-damage extract \
+  --compiled /your/resources/baked_bomb_damage.vdata_c \
+  --decompiler /your/tools/Source2Viewer-CLI \
+  --decompiler-sha256 <反编译器可执行文件的SHA256> \
+  --map de_mirage --build-id 25687242 \
+  --out /your/resources/mirage.json
+
+npx cs2-c4-damage inspect /your/resources/mirage.json
+```
+
+可用 `sha256sum`、`shasum -a 256` 或 PowerShell 的 `Get-FileHash -Algorithm SHA256`
+计算可执行文件哈希。还可通过 `--client-sha256` 记录匹配的客户端二进制身份。
+已有反编译文本时，用 `--vdata <文本文件>` 替换两个 `--decompiler` 选项。
+
+build 身份、提取选项和地图更新方式见[资源指南](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/resources.md)。
+
+## 接入 GSI
+
+加载地图并创建一次预测器，在后续快照更新中复用：
 
 ```ts
-import { outcomeFromDamageRange, predictC4Outcome } from 'cs2-c4-damage';
-import { assessGsiSnapshot } from 'cs2-c4-damage/gsi';
-import { parseBombDamageVdata } from 'cs2-c4-damage';
+import { readNormalizedField } from 'cs2-c4-damage/node';
+import { createGsiC4Predictor, decodeGsiSnapshot } from 'cs2-c4-damage/gsi';
 
-// 仅为 synthetic 算术示例；不是从 GSI 推导出的上下界。
-outcomeFromDamageRange(50, { min: 40, max: 60 }, ['ducked']);
-// bounded；hpAfter: { min: 0, max: 10 }；lethal: 'indeterminate'
+const field = await readNormalizedField('/your/resources/mirage.json');
+const predict = createGsiC4Predictor(field);
 
-assessGsiSnapshot({ health: 50 });
-// 缺失空间输入，以及未知 ducked、collision 和 native second sample。
+export function handleGsi(payload: unknown, steamId?: string) {
+  // steamId 选择 allplayers[steamId]；省略时选择 player。
+  const result = predict(decodeGsiSnapshot(payload, steamId));
+  if (result.status === 'conditional') {
+    console.log(result.damage); // { min, max }：所计算场景的范围
+    console.log(result.hpAfter, result.lethal);
+    console.log(result.scenarios); // 各场景的姿态、伤害和采样 trace
+  }
+  return result;
+}
+```
 
-// 即使 field 和外部输入完整，在缺失语义完成匹配 native qualification 前仍 fail closed。
-predictC4Outcome({
-  field,
-  bombPosition,
-  playerPosition,
-  playerForward,
-  ducked,
-  health,
-});
+在 GSI 配置中启用炸弹位置、玩家位置、朝向和血量所需的数据。字段可用性取决于 GSI
+配置和观察视角。适配器接受坐标字符串或数值三元组，处理已安放／正在拆除的炸弹，
+并在提供地图名时核对资源。GSI HTTP 接收服务由应用负责。
 
-// parser 要求显式 provenance；未知 hash 用 null 表示。
-parseBombDamageVdata(vdataText, {
-  mapName: 'de_mirage',
-  sourceBuildId: '25218825',
-  resourceSha256: compiledResourceSha256,
-  decompiledVdataSha256,
-  extraction: { tool: 'Source 2 Viewer', revision: '20.0.6980' },
+| 结果          | 含义                                                                        |
+| ------------- | --------------------------------------------------------------------------- |
+| `conditional` | 所列场景的伤害和 HP 范围，以及 `lethal`、`assumptions` 和 `unknownInputs`。 |
+| `unavailable` | 必要输入缺失或非法、资源身份不支持，或场查询无法完成；原因见 `reason`。     |
+
+`lethal` 根据这些场景返回 `true`、`false` 或 `'indeterminate'`。
+已解码的快照可直接传入预测器；单次调用也可使用 `predictC4OutcomeFromGsi(field, snapshot)`。
+
+## 直接输入与采样
+
+应用已经持有玩家和炸弹状态时，可使用核心 API：
+
+```ts
+import { createC4Predictor } from 'cs2-c4-damage';
+
+const predict = createC4Predictor(field);
+const result = predict({
+  bombPosition: { x: 100, y: 200, z: 0 },
+  playerPosition: { x: 150, y: 250, z: 0 },
+  playerForward: { x: 1, y: 0, z: 0 },
+  health: 100,
+  ducked: undefined, // 计算两种姿态；已知时传 true/false
 });
 ```
 
-Parser 会记录 `sourcePairStatus: "unverified-source-pair"`：同时对用户提供的
-compiled resource 与 decompiled text 做 hash，并不能证明二者存在来源关系。Node
-extractor 还会记录 decompiled hash 与 canonical `normalizedFieldSha256`；qualification
-会绑定这些 identity，但保留 source-pair 未验证这一限制。
+可选的 `nativeState` 提供碰撞边界／变换，以及地面结果或碰撞查询服务。
+`runStaticSampling` 提供首次查询、二次查询、选中阶段和修正后伤害。
+详见[模型与 API 指南](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/model.md)。
 
-`C4Outcome` 区分 `exact`、`bounded` 与 `unavailable`。对于已经证明完整覆盖的伤害区间，
-最小伤害达到 HP 则确定致死，最大伤害小于 HP 则确定存活，否则为 `indeterminate`。
-即使两端相同，也仍保留 `bounded`；该 helper 不负责证明区间来源可靠。
-
-GSI 入口只接收**已解码的 GSI-like 快照**，不是原始 Valve JSON parser。
-它验证 bomb/player position、forward 和正 health，不编造 crouch，也不评估 freshness、
-observer coverage 或 RivalHub runtime continuity。
-
-## Node tooling
-
-package 暴露 `cs2-c4-damage/node` 和同 package 的 `cs2-c4-damage` binary。
-提取器读取用户自己持有的文件，不 vendoring 或发布 Valve resource。
+## CLI
 
 ```sh
-cs2-c4-damage extract \
-  --vdata <decompiled.vdata> \
-  --compiled <baked_bomb_damage.vdata_c> \
-  --map de_mirage \
-  --build-id 25218825 \
-  --client-sha256 <client.dll-sha256> \
-  --out field.json
+npx cs2-c4-damage predict /your/resources/mirage.json \
+  --bomb-position 100,200,0 --player-position 150,250,0 \
+  --forward 1,0,0 --health 100 --ducked unknown
 
-cs2-c4-damage inspect field.json
-cs2-c4-damage predict field.json --bomb-position x,y,z \
-  --player-position x,y,z --forward x,y,z --health 100 \
-  --ducked unknown
-cs2-c4-damage qualify vectors.json field.json
+npx cs2-c4-damage compare-traces expected.json actual.json
+npx cs2-c4-damage qualify vectors.json /your/resources/mirage.json
 ```
 
-`predict` 输出 fail-closed 的顶层结果。可选的 `--sample-position` 只输出明确标记的
-field-only 计算；它不是 native-parity prediction，也不是 conservative native damage envelope。
+`predict` 输出 JSON；`compare-traces` 对照采样阶段并报告差异路径；
+`qualify` 检查带版本信息的参考向量及资源身份。
 
-Qualification vectors 必须包含 `schemaVersion: 1`、明确的 `modelRevision`、compiled 与
-decompiled resource hash、`normalizedFieldSha256`，以及
-`sourcePairStatus: "unverified-source-pair"`，并可保留 `nativeFailureReason` 与仅用于
-evidence 的 native trace。当前 harness 只比较最终 native validity 和 damage。通过要求至少
-一个 native-valid case、所有正例 exact damage 匹配且没有未解决的正例；负例单独统计。它
-本身不能闭合 Q1–Q3，这仍需要 Windows trace instrumentation 或等价的 native debug capture。
-
-## 开发
-
-需要 Node >=22 与 `package.json` 固定版本的 pnpm：
+## 开发与文档
 
 ```sh
-pnpm install
+pnpm install --frozen-lockfile
 pnpm lint
 pnpm typecheck
 pnpm test
@@ -141,37 +126,16 @@ pnpm build
 pnpm test:package
 ```
 
-单 package，strict TypeScript、tsup，根路径、`/gsi` 和 `/node` 均支持 ESM + CommonJS。
-CI 覆盖 Linux、Windows、macOS 上的 Node 22/24。确定性测试使用手工 synthetic fixtures；
-真实资产 qualification 放入 gitignored `qualification/` 或 `.agent-tmp/`，不进入 package。
-详见[贡献指南](CONTRIBUTING.md)。
+- [文档索引](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/README.md)
+- [架构](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/architecture.md)
+- [更新日志](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CHANGELOG.md)
+- [贡献指南](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CONTRIBUTING.md) · [发布流程](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/releasing.md)
 
-当前版本为 `0.0.0`，使用 `private: true` 防止误发布；没有 npm release 或 GitHub release。
+新代码采用 Apache-2.0。原始研究来自 [unicbm](https://github.com/unicbm)，保留作者版权；
+详见[致谢](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CREDITS.md)。
 
-## Research credits / 研究贡献
+## 精度说明
 
-current-CS2 native C4 damage query path、client HUD call chain、server actual-damage
-path、ABI、stance/facing correction 和 armor semantics 等关键 native findings 来自
-[unicbm](https://github.com/unicbm) 的 reverse-engineering research。
-本项目经作者授权使用该研究建立；external implementation、API、GSI uncertainty model
-和 tests 属于本项目后续实现。原始研究本身不证明外部引擎已达到 parity。
-
-[Source 2 Viewer](https://s2v.app) /
-[ValveResourceFormat](https://github.com/ValveResourceFormat/ValveResourceFormat)
-是公开资源格式 prior art 和计划中的提取路径。本 package 未复制其实现代码或 Valve 资产。
-Valve 的[2026 年 7 月更新记录](https://store.steampowered.com/news/posts/?appids=730&enddate=1784076119)
-说明了预计算伤害和传播冲击波。
-固定版本引用见[研究来源](docs/research/PROVENANCE.md)。
-
-## 许可与署名
-
-项目新代码采用 [Apache-2.0](LICENSE)，允许开源、闭源、商业 tooling 按许可条件复用，
-包含明确署名与专利授权条款。RivalHub-Broadcast 等 AGPL 应用可以作为依赖使用，
-下游仍须遵守自身许可义务。
-
-**原始研究 Markdown 是例外：版权归 unicbm，经许可转载并用于实现，并未重新许可为 Apache-2.0。**
-本项目不据此推定原作者向所有下游授予单独的文本再许可。
-详见[授权记录](docs/research/authorization.md)、[NOTICE](NOTICE) 和 [CREDITS](CREDITS.md)。
-原始研究不在 npm package 发布白名单中。
-
-本项目不代表 Valve、Counter-Strike 或 Steam，也未获其背书。
+结果基于 `cs2-win64-2026-10-02-static-v2` 模型和匹配的地图资源。GSI 缺少部分姿态与碰撞状态，
+地面重采样、动态障碍物或特殊变换等情况可能无法精确模拟。输出范围仅覆盖所列场景，
+不涵盖全部未知状态；完整原生一致性尚待实机采集验证。
