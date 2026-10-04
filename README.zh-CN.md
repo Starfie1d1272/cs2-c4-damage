@@ -1,9 +1,19 @@
 # cs2-c4-damage
 
-[English](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/README.md)
+面向自定义 CS2 HUD 的即插即用 C4 伤害预测库。运行时无需安装 CS2、提取游戏资源或联网。
 
-面向 HUD 和赛事直播应用的 CS2 C4 伤害预测库。内置 10 张地图的精简数据，支持自动选图加载，
-输出单个站立伤害值、剩余 HP 和致死判断。
+[![npm version](https://img.shields.io/npm/v/cs2-c4-damage?logo=npm)](https://www.npmjs.com/package/cs2-c4-damage)
+[![CI](https://github.com/Starfie1d1272/cs2-c4-damage/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Starfie1d1272/cs2-c4-damage/actions/workflows/ci.yml)
+[![Code license: Apache-2.0](https://img.shields.io/badge/code_license-Apache--2.0-blue)](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/LICENSE)
+
+[English](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/README.md) · [文档](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/README.md) · [更新日志](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CHANGELOG.md)
+
+为 HUD 和赛事直播叠加层提供伤害、爆炸后剩余 HP 与致死判断，按站立状态估算。
+
+- **内置 10 张地图**，自动选图、按需加载并复用计算器。
+- **支持 GSI**，从 Game State Integration 快照读取炸弹与玩家状态。
+- **零运行时 npm 依赖**，提供 ESM/CJS 导出和 TypeScript 类型声明。
+- **接入现有 HUD**，GSI 接收服务与画面展示由你的应用负责。
 
 ## 安装
 
@@ -44,6 +54,11 @@ export function resetC4() {
 服务自动选图、读取内置伤害场，并在后续更新中复用计算器。默认最多缓存两张地图，
 换图或 reset 后会丢弃旧的异步结果；输入缺失或地图不支持时返回 `unavailable`。
 运行时不需要本地 CS2 安装、提取工具、手动下载资源或联网请求。
+
+## 精度说明
+
+HUD 数值按站立状态估算。缺失的碰撞／姿态状态及游戏更新可能使结果与实际伤害不同，
+不承诺实战完全精确模拟。
 
 ## 内置地图
 
@@ -108,8 +123,3 @@ pnpm test:package
 内置数值地图表由 CS2 数据生成，源游戏材料的权利仍归相应权利人所有。
 详见[致谢](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CREDITS.md)和
 [NOTICE](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/NOTICE)。
-
-## 精度说明
-
-HUD 数值按站立状态估算。缺失的碰撞／姿态状态及游戏更新可能使结果与实际伤害不同，
-不承诺实战完全精确模拟。

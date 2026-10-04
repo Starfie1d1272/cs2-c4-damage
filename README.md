@@ -1,10 +1,19 @@
 # cs2-c4-damage
 
-[简体中文](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/README.zh-CN.md)
+Drop-in CS2 C4 damage prediction for custom HUDs — no CS2 installation, extraction or runtime network access required.
 
-CS2 C4 damage prediction for HUDs and broadcast applications. Includes compact data for
-10 maps, automatic map loading, and a single standing-damage estimate with remaining HP
-and lethality.
+[![npm version](https://img.shields.io/npm/v/cs2-c4-damage?logo=npm)](https://www.npmjs.com/package/cs2-c4-damage)
+[![CI](https://github.com/Starfie1d1272/cs2-c4-damage/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Starfie1d1272/cs2-c4-damage/actions/workflows/ci.yml)
+[![Code license: Apache-2.0](https://img.shields.io/badge/code_license-Apache--2.0-blue)](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/LICENSE)
+
+[简体中文](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/README.zh-CN.md) · [Documentation](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/docs/README.md) · [Changelog](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CHANGELOG.md)
+
+Estimate damage, post-explosion HP and lethality for HUDs and broadcast overlays, assuming a standing player.
+
+- **10 bundled maps** with automatic selection, on-demand loading and predictor reuse.
+- **GSI-ready** adapters for bomb and player state from Game State Integration snapshots.
+- **Zero runtime npm dependencies**, ESM/CJS exports and TypeScript declarations.
+- **Fits your HUD**: your application owns the GSI receiver and display.
 
 ## Install
 
@@ -48,6 +57,11 @@ on subsequent updates. It caches up to two maps by default, drops stale in-fligh
 on map changes/reset, and returns `unavailable` for missing inputs or unsupported maps.
 No local CS2 installation, extraction tool, manual resource download or network request
 is needed at runtime.
+
+## Accuracy
+
+The HUD value is a standing estimate. Missing collision/posture state and game updates can
+cause differences from actual damage; the model does not promise exact live-game simulation.
 
 ## Included maps
 
@@ -119,8 +133,3 @@ Authored code is Apache-2.0. Original research is credited to [unicbm](https://g
 Bundled numerical map tables are derived from CS2; rights in source game materials remain
 with their owners. See [credits](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/CREDITS.md)
 and [NOTICE](https://github.com/Starfie1d1272/cs2-c4-damage/blob/main/NOTICE).
-
-## Accuracy
-
-The HUD value is a standing estimate. Missing collision/posture state and game updates can
-cause differences from actual damage; the model does not promise exact live-game simulation.

@@ -3,6 +3,12 @@
 Package versions describe the public library API. Model revisions and CS2 build
 identities are recorded separately in resource metadata.
 
+## 0.1.1
+
+- Restructure the English and Chinese READMEs around HUD integration, with package/CI/license badges and earlier accuracy guidance.
+- Expand npm keywords and clarify the package description for HUD and broadcast developers.
+- No runtime API, model or bundled map data changes.
+
 ## 0.1.0
 
 Published on 2026-10-04 (Asia/Shanghai) under npm `latest` via GitHub OIDC.

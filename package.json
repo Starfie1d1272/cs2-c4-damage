@@ -1,7 +1,7 @@
 {
   "name": "cs2-c4-damage",
-  "version": "0.1.0",
-  "description": "CS2 C4 damage prediction from baked map fields and Game State Integration snapshots",
+  "version": "0.1.1",
+  "description": "CS2 C4 damage prediction for custom HUDs and broadcast overlays — bundled data for 10 maps, GSI adapters, and zero runtime npm dependencies.",
   "type": "module",
   "license": "Apache-2.0",
   "engines": {
@@ -100,7 +100,16 @@
     "c4",
     "damage",
     "gsi",
-    "typescript"
+    "typescript",
+    "counter-strike-2",
+    "bomb",
+    "bomb-damage",
+    "hud",
+    "broadcast",
+    "overlay",
+    "esports",
+    "prediction",
+    "gamestate-integration"
   ],
   "publishConfig": {
     "access": "public",
